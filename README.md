@@ -76,7 +76,14 @@ dart run tool/generate_sounds.dart
 Единственная внешняя зависимость — `audioplayers`, и только ради
 воспроизведения. Для сборки под Linux ему нужны заголовки GStreamer
 (`sudo apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev`);
-для web и Android ничего доставлять не надо.
+для web, Android и Windows ничего доставлять не надо — под Windows хватает
+Visual Studio 2022 с рабочей нагрузкой «Разработка классических приложений
+на C++», которую Flutter требует и так.
+
+В репозитории лежат платформы `web`, `android`, `linux` и `windows`. Под
+macOS или iOS доложи нужную одной командой в корне проекта:
+`flutter create --platforms=macos,ios .` — она допишет недостающие папки,
+не трогая `lib/` и `test/`.
 
 ## Устройство
 

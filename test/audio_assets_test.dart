@@ -70,10 +70,12 @@ void main() {
   });
 
   test('the asset folder holds nothing but the generated sounds', () {
+    // `entry.path` uses the platform separator (backslashes on Windows), so
+    // the name comes from the URI, which is the same everywhere.
     final strays = Directory('assets/audio')
         .listSync()
-        .map((entry) => entry.path.split('/').last)
-        .where((name) => !assets.contains('audio/$name'))
+        .map((entry) => entry.uri.pathSegments.last)
+        .where((name) => name.isNotEmpty && !assets.contains('audio/$name'))
         .toList();
     expect(strays, isEmpty, reason: 'unexpected files in assets/audio');
   });
