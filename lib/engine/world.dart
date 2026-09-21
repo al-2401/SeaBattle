@@ -4,6 +4,7 @@ import 'entities.dart';
 import 'game_config.dart';
 import 'geometry.dart';
 import 'periscope.dart';
+import 'sound_cue.dart';
 import 'vec2.dart';
 
 enum GamePhase { ready, running, over }
@@ -42,6 +43,9 @@ class SeaBattleWorld {
   final List<Blast> blasts = [];
   final List<Notice> notices = [];
 
+  /// Noises that happened since the presenter last looked.
+  final List<SoundCue> _cues = [];
+
   GamePhase phase = GamePhase.ready;
   int score = 0;
   int bestScore = 0;
@@ -54,6 +58,7 @@ class SeaBattleWorld {
 
   double _spawnTimer = 0;
   double _mineTimer = 0;
+  double _hornTimer = 0;
   int _nextId = 1;
 
   /// Ramps from 0 to 1 over the first three minutes of a patrol.
@@ -92,6 +97,8 @@ class SeaBattleWorld {
     tubesLoaded = math.min(config.torpedoSalvoSize, torpedoesRemaining);
     _spawnTimer = 0.8;
     _mineTimer = _randomBetween(config.mineSpawnInterval);
+    _hornTimer = 6 + _random.nextDouble() * 12;
+    _cues.clear();
     // Start with a little traffic already in the arc.
     for (var i = 0; i < math.min(3, config.maxVessels); i++) {
       _spawnVessel();
@@ -105,6 +112,14 @@ class SeaBattleWorld {
     _notify('ПОИСК ЦЕЛИ', NoticeKind.info, 1.6);
   }
 
+  /// Hands over the noises queued since the last call and empties the queue.
+  List<SoundCue> drainCues() {
+    if (_cues.isEmpty) return const [];
+    final drained = List<SoundCue>.of(_cues);
+    _cues.clear();
+    return drained;
+  }
+
   void update(double dt) {
     if (dt <= 0) return;
     // Never integrate a huge step: a backgrounded tab must not teleport
@@ -112,6 +127,8 @@ class SeaBattleWorld {
     dt = math.min(dt, 0.05);
 
     periscope.update(dt);
+    if (periscope.stopImpact > 0.12) _cues.add(SoundCue.clunk);
+    periscope.stopImpact = 0;
     _updateNotices(dt);
     _updateBlasts(dt);
 
@@ -124,6 +141,7 @@ class SeaBattleWorld {
       if (reloadTimer == 0 && torpedoesRemaining > 0) {
         tubesLoaded = math.min(config.torpedoSalvoSize, torpedoesRemaining);
         _notify('ТОРПЕДЫ ГОТОВЫ', NoticeKind.info, 1.0);
+        _cues.add(SoundCue.reload);
       }
     }
 
@@ -154,6 +172,7 @@ class SeaBattleWorld {
         maxRange: config.torpedoRange,
       ),
     );
+    _cues.add(SoundCue.launch);
     shotsFired++;
     torpedoesRemaining--;
     tubesLoaded--;
@@ -187,12 +206,33 @@ class SeaBattleWorld {
       );
     }
 
+    _hornTimer -= dt;
+    if (_hornTimer <= 0) {
+      _hornTimer = _soundOffIfAnyoneIsAbout()
+          ? 16 + _random.nextDouble() * 22
+          : 4;
+    }
+
     _mineTimer -= dt;
     if (_mineTimer <= 0) {
       if (mines.length < config.maxMines) _spawnMine();
       _mineTimer = _randomBetween(config.mineSpawnInterval) *
           (1 - 0.45 * difficulty);
     }
+  }
+
+  /// Sounds a merchant's horn if one is close enough and roughly where the
+  /// optics are looking. Returns whether anybody was there to sound off.
+  bool _soundOffIfAnyoneIsAbout() {
+    for (final vessel in vessels) {
+      if (vessel.isHit) continue;
+      if (vessel.range > 2600) continue;
+      final offAxis = angleDelta(periscope.heading, vessel.bearing).abs();
+      if (offAxis > config.fieldOfView * 0.7) continue;
+      _cues.add(SoundCue.horn);
+      return true;
+    }
+    return false;
   }
 
   /// A ship is retired once it has finished its transit: either hull down in
@@ -301,6 +341,7 @@ class SeaBattleWorld {
           ),
         );
         _notify('МИМО', NoticeKind.miss, 1.1);
+        _cues.add(SoundCue.splash);
       }
     }
     torpedoes.removeWhere((t) => t.spent);
@@ -360,6 +401,7 @@ class SeaBattleWorld {
         ),
       );
       _notify('МИНА!', NoticeKind.mine, 1.4);
+      _cues.add(SoundCue.mine);
     }
   }
 
@@ -391,6 +433,7 @@ class SeaBattleWorld {
       ),
     );
     _notify('${vessel.type.label} +$points', NoticeKind.hit, 1.8);
+    _cues.add(SoundCue.hit);
   }
 
   /// Score for sinking [vessel]: the farther the target, the better the shot.
@@ -432,6 +475,7 @@ class SeaBattleWorld {
     phase = GamePhase.over;
     if (score > bestScore) bestScore = score;
     _notify('БОЕЗАПАС ИЗРАСХОДОВАН', NoticeKind.info, 4);
+    _cues.add(SoundCue.gameOver);
   }
 
   double _randomBetween(({double min, double max}) range) =>

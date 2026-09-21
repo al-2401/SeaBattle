@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
+import '../audio/game_audio.dart';
 import '../engine/world.dart';
 import 'control_panel.dart';
 import 'painters/sea_painter.dart';
@@ -11,7 +12,10 @@ import 'palette.dart';
 import 'periscope_view.dart';
 
 class GamePage extends StatefulWidget {
-  const GamePage({super.key});
+  const GamePage({super.key, this.audio});
+
+  /// Sound engine; null means build the real one.
+  final GameAudio? audio;
 
   @override
   State<GamePage> createState() => _GamePageState();
@@ -24,6 +28,7 @@ class _GamePageState extends State<GamePage>
   final FocusNode _focusNode = FocusNode();
   final Set<LogicalKeyboardKey> _heldKeys = {};
 
+  late final GameAudio _audio;
   late final Ticker _ticker;
   Duration _lastTick = Duration.zero;
   double _time = 0;
@@ -41,6 +46,8 @@ class _GamePageState extends State<GamePage>
   @override
   void initState() {
     super.initState();
+    _audio = widget.audio ?? ArcadeAudio();
+    _audio.prepare();
     _ticker = createTicker(_onTick)..start();
   }
 
@@ -48,7 +55,26 @@ class _GamePageState extends State<GamePage>
   void dispose() {
     _ticker.dispose();
     _focusNode.dispose();
+    _audio.dispose();
     super.dispose();
+  }
+
+  /// Every way of firing goes through here, so the audio layer always gets
+  /// its gesture before it tries to make a sound.
+  void _fire() {
+    _audio.unlock();
+    _world.fire();
+  }
+
+  void _startPatrol() {
+    _audio.unlock();
+    _world.start();
+    _focusNode.requestFocus();
+  }
+
+  void _toggleSound() {
+    _audio.unlock();
+    setState(() => _audio.enabled = !_audio.enabled);
   }
 
   void _onTick(Duration elapsed) {
@@ -57,6 +83,18 @@ class _GamePageState extends State<GamePage>
     _time += dt;
     _world.periscope.control = _handleDemand();
     _world.update(dt);
+
+    for (final cue in _world.drainCues()) {
+      _audio.fire(cue);
+    }
+    _audio.updateLoops(
+      trainEffort:
+          _world.periscope.angularVelocity.abs() /
+          _world.config.maxAngularSpeed,
+      torpedoesRunning: _world.torpedoes.length,
+      patrolRunning: _world.phase == GamePhase.running,
+    );
+
     setState(() {});
   }
 
@@ -71,18 +109,23 @@ class _GamePageState extends State<GamePage>
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     final key = event.logicalKey;
+    if (event is KeyDownEvent) _audio.unlock();
     if (event is KeyUpEvent) {
       _heldKeys.remove(key);
       return KeyEventResult.handled;
     }
     if (event is KeyDownEvent) {
       if (key == LogicalKeyboardKey.space) {
-        _world.fire();
+        _fire();
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.keyM) {
+        _toggleSound();
         return KeyEventResult.handled;
       }
       if (key == LogicalKeyboardKey.enter ||
           key == LogicalKeyboardKey.numpadEnter) {
-        _world.start();
+        _startPatrol();
         return KeyEventResult.handled;
       }
       if (key == LogicalKeyboardKey.keyR) {
@@ -116,7 +159,11 @@ class _GamePageState extends State<GamePage>
         child: SafeArea(
           child: Column(
             children: [
-              _StatusBar(world: _world),
+              _StatusBar(
+                world: _world,
+                soundOn: _audio.enabled,
+                onToggleSound: _toggleSound,
+              ),
               Expanded(
                 child: Stack(
                   fit: StackFit.expand,
@@ -126,16 +173,10 @@ class _GamePageState extends State<GamePage>
                       surface: _surface,
                       time: _time,
                       onControl: _setDragControl,
-                      onFire: () => _world.fire(),
+                      onFire: _fire,
                     ),
                     if (_world.phase != GamePhase.running)
-                      _PhaseOverlay(
-                        world: _world,
-                        onStart: () {
-                          _world.start();
-                          _focusNode.requestFocus();
-                        },
-                      ),
+                      _PhaseOverlay(world: _world, onStart: _startPatrol),
                   ],
                 ),
               ),
@@ -145,6 +186,7 @@ class _GamePageState extends State<GamePage>
                   compact: compact,
                   width: constraints.maxWidth,
                   onControl: _setDragControl,
+                  onFire: _fire,
                 ),
               ),
             ],
@@ -198,9 +240,15 @@ class _PeriscopeSurfaceState extends State<_PeriscopeSurface> {
 }
 
 class _StatusBar extends StatelessWidget {
-  const _StatusBar({required this.world});
+  const _StatusBar({
+    required this.world,
+    required this.soundOn,
+    required this.onToggleSound,
+  });
 
   final SeaBattleWorld world;
+  final bool soundOn;
+  final VoidCallback onToggleSound;
 
   @override
   Widget build(BuildContext context) {
@@ -227,6 +275,8 @@ class _StatusBar extends StatelessWidget {
                 ),
               ],
               const Spacer(),
+              _SoundLamp(on: soundOn, onTap: onToggleSound),
+              const SizedBox(width: 12),
               Flexible(
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
@@ -261,18 +311,70 @@ class _StatusBar extends StatelessWidget {
   }
 }
 
+/// The sound switch on the cabinet front, with its little indicator lamp.
+class _SoundLamp extends StatelessWidget {
+  const _SoundLamp({required this.on, required this.onTap});
+
+  final bool on;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 9,
+              height: 9,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: on ? Palette.lamp : Palette.lampOff,
+                boxShadow: on
+                    ? [
+                        BoxShadow(
+                          color: Palette.lamp.withValues(alpha: 0.6),
+                          blurRadius: 8,
+                        ),
+                      ]
+                    : null,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'ЗВУК',
+              style: kStencil.copyWith(
+                fontSize: 9,
+                color: (on ? Palette.lamp : Palette.steel).withValues(
+                  alpha: on ? 0.9 : 0.5,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ControlDeck extends StatelessWidget {
   const _ControlDeck({
     required this.world,
     required this.compact,
     required this.width,
     required this.onControl,
+    required this.onFire,
   });
 
   final SeaBattleWorld world;
   final bool compact;
   final double width;
   final ValueChanged<double> onControl;
+  final VoidCallback onFire;
 
   @override
   Widget build(BuildContext context) {
@@ -306,7 +408,7 @@ class _ControlDeck extends StatelessWidget {
                 if (showKeyHints) ...[
                   const SizedBox(height: 8),
                   Text(
-                    '← → ПОВОРОТ    ПРОБЕЛ ЗАЛП    R ЗАНОВО',
+                    '← → ПОВОРОТ    ПРОБЕЛ ЗАЛП    M ЗВУК    R ЗАНОВО',
                     style: kStencil.copyWith(
                       fontSize: 9,
                       color: Palette.steel.withValues(alpha: 0.55),
@@ -326,7 +428,7 @@ class _ControlDeck extends StatelessWidget {
           FireButton(
             enabled: world.canFire,
             reloadProgress: reload,
-            onFire: () => world.fire(),
+            onFire: onFire,
             diameter: button,
           ),
         ],

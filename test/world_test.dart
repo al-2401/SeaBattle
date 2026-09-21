@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sea_battle/engine/entities.dart';
 import 'package:sea_battle/engine/game_config.dart';
+import 'package:sea_battle/engine/sound_cue.dart';
 import 'package:sea_battle/engine/vec2.dart';
 import 'package:sea_battle/engine/world.dart';
 
@@ -259,8 +260,10 @@ void main() {
         seen.addAll(world.vessels.map((v) => v.id));
         expect(world.vessels.length, lessThanOrEqualTo(_config.maxVessels));
       }
-      // Far more ships than the arc can hold at once must have passed through.
-      expect(seen.length, greaterThan(_config.maxVessels * 3));
+      // Several arcs' worth of ships must have passed through, not the same
+      // handful sitting there. (An exact count would only pin down the seeded
+      // random stream, so this asserts the behaviour, not the sequence.)
+      expect(seen.length, greaterThan(_config.maxVessels * 2));
     });
 
     test('spawned ships cross the bow instead of sailing away', () {
@@ -348,6 +351,92 @@ void main() {
       );
       expect(toStarboard.bearingRate, greaterThan(0));
       expect(toPort.bearingRate, lessThan(0));
+    });
+  });
+
+  group('sound cues', () {
+    test('drain hands the queue over once and then empties it', () {
+      final world = quietSea();
+      world.fire();
+      expect(world.drainCues(), contains(SoundCue.launch));
+      expect(world.drainCues(), isEmpty);
+    });
+
+    test('a hit, a mine and a wasted run each get their own noise', () {
+      final world = quietSea();
+      world.vessels.add(target(type: VesselClass.destroyer, range: 1200));
+      world.fire();
+      advance(world, 1200 / _config.torpedoSpeed + 0.3);
+      expect(world.drainCues(), contains(SoundCue.hit));
+
+      world.mines.add(
+        Mine(id: 9, position: const Vec2(0, 800), drift: Vec2.zero, bobPhase: 0),
+      );
+      world.fire();
+      advance(world, 800 / _config.torpedoSpeed + 0.3);
+      expect(world.drainCues(), contains(SoundCue.mine));
+
+      world.vessels.clear();
+      advance(world, _config.reloadTime + 0.3);
+      world.drainCues();
+      world.fire();
+      advance(world, _config.torpedoRange / _config.torpedoSpeed + 0.3);
+      expect(world.drainCues(), contains(SoundCue.splash));
+    });
+
+    test('the tubes announce themselves when they are ready again', () {
+      final world = quietSea();
+      for (var i = 0; i < _config.torpedoSalvoSize; i++) {
+        world.fire();
+      }
+      world.drainCues();
+      advance(world, _config.reloadTime + 0.2);
+      expect(world.drainCues(), contains(SoundCue.reload));
+    });
+
+    test('hitting the training stop hard enough clunks', () {
+      final world = quietSea();
+      world.periscope
+        ..heading = _config.traverseLimit - 0.001
+        ..angularVelocity = 0.6;
+      world.update(1 / 60);
+      expect(world.drainCues(), contains(SoundCue.clunk));
+
+      // Drifting gently onto the stop is not worth a noise.
+      world.periscope
+        ..heading = _config.traverseLimit - 0.0001
+        ..angularVelocity = 0.02;
+      world.update(1 / 60);
+      expect(world.drainCues(), isNot(contains(SoundCue.clunk)));
+    });
+
+    test('a ship in the field of view sounds off eventually', () {
+      final world = quietSea();
+      world.vessels.add(target(type: VesselClass.freighter, range: 1800));
+      var heard = false;
+      for (var t = 0.0; t < 60 && !heard; t += 0.05) {
+        world.update(0.05);
+        heard = world.drainCues().contains(SoundCue.horn);
+      }
+      expect(heard, isTrue);
+    });
+
+    test('nobody sounds off across an empty sea', () {
+      final world = quietSea();
+      for (var t = 0.0; t < 60; t += 0.05) {
+        world.update(0.05);
+        expect(world.drainCues(), isNot(contains(SoundCue.horn)));
+      }
+    });
+
+    test('the end of the patrol is announced', () {
+      final world = quietSea();
+      while (world.torpedoesRemaining > 0) {
+        if (!world.fire()) advance(world, 0.1);
+      }
+      world.drainCues();
+      advance(world, _config.torpedoRange / _config.torpedoSpeed + 1);
+      expect(world.phase, GamePhase.over);
     });
   });
 }

@@ -24,6 +24,10 @@ class Periscope {
   /// Seconds the handle has been held hard against a stop.
   double _stopContact = 0;
 
+  /// Rate the gear was doing when it last struck a stop, rad/s. The presenter
+  /// reads this to decide how hard the clunk should sound, then clears it.
+  double stopImpact = 0;
+
   /// Handle deflection, -1 (port) .. +1 (starboard).
   double get control => _control;
 
@@ -55,6 +59,7 @@ class Periscope {
     final limit = config.traverseLimit;
     if (heading.abs() > limit) {
       heading = heading.sign * limit;
+      stopImpact = math.max(stopImpact, angularVelocity.abs());
       angularVelocity = -angularVelocity * config.limitRestitution;
       _stopContact = math.min(1.0, _stopContact + dt * 6);
     } else {
@@ -70,5 +75,6 @@ class Periscope {
     angularVelocity = 0;
     _control = 0;
     _stopContact = 0;
+    stopImpact = 0;
   }
 }

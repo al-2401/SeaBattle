@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'audio/game_audio.dart';
 import 'ui/game_page.dart';
 import 'ui/palette.dart';
 
@@ -11,7 +12,11 @@ void main() {
 }
 
 class SeaBattleApp extends StatelessWidget {
-  const SeaBattleApp({super.key});
+  const SeaBattleApp({super.key, this.audio});
+
+  /// Sound engine to use. Left null, the cabinet wires up its own; tests pass
+  /// a [SilentAudio] so they never reach for an audio device.
+  final GameAudio? audio;
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +32,7 @@ class SeaBattleApp extends StatelessWidget {
           surface: Palette.bezel,
         ),
       ),
-      home: const Scaffold(body: GamePage()),
+      home: Scaffold(body: GamePage(audio: audio)),
     );
   }
 }
