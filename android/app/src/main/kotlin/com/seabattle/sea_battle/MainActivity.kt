@@ -1,0 +1,5 @@
+package com.seabattle.sea_battle
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity : FlutterActivity()
