@@ -34,7 +34,7 @@ class GameConfig {
     this.threatRange = 2400.0,
     this.neutralShare = 0.3,
     this.flagRange = 2200.0,
-    this.identifyTime = 2.2,
+    this.identifyTime = 1.3,
     this.neutralPenalty = 300,
     this.spawnInterval = const (min: 3.4, max: 7.0),
     this.maxVessels = 7,
