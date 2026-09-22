@@ -174,6 +174,108 @@ void paintBearingTape(
   );
 }
 
+/// The threat strip: the whole trained arc squeezed into one short scale,
+/// sitting under the bearing tape.
+///
+/// The tape above it shows the 30° actually in the eyepiece; this shows all
+/// ±72° at once, so something creeping up on the far side of the arc can be
+/// seen coming. Only threats are marked — hunters and mines. Targets are
+/// deliberately absent: hunting them down in a narrow field of view is the
+/// game, and a repeater that showed them would play it for you.
+void paintThreatStrip(
+  Canvas canvas,
+  Rect rect,
+  Sight sight,
+  double traverseLimit,
+  double fieldOfView,
+  List<Threat> threats,
+) {
+  final width = rect.width * 0.54;
+  final left = rect.center.dx - width / 2;
+  final y = rect.top + rect.height * 0.16 + 34;
+
+  /// Bearing to a position along the strip.
+  double xFor(double bearing) =>
+      left + width * (bearing.clamp(-traverseLimit, traverseLimit) / traverseLimit + 1) / 2;
+
+  // The slice of arc the optics are actually looking at.
+  final windowRect = Rect.fromLTRB(
+    xFor(sight.heading - fieldOfView / 2),
+    y - 6,
+    xFor(sight.heading + fieldOfView / 2),
+    y + 6,
+  );
+  canvas.drawRRect(
+    RRect.fromRectAndRadius(windowRect, const Radius.circular(2)),
+    Paint()..color = Palette.reticle.withValues(alpha: 0.10),
+  );
+  canvas.drawRRect(
+    RRect.fromRectAndRadius(windowRect, const Radius.circular(2)),
+    Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = Palette.reticle.withValues(alpha: 0.45),
+  );
+
+  // The rail, with a tick at the bow and one at each training stop.
+  canvas.drawLine(
+    Offset(left, y),
+    Offset(left + width, y),
+    Paint()
+      ..strokeWidth = 1
+      ..color = Palette.reticle.withValues(alpha: 0.28),
+  );
+  for (final bearing in [-traverseLimit, 0.0, traverseLimit]) {
+    final x = xFor(bearing);
+    canvas.drawLine(
+      Offset(x, y - 4),
+      Offset(x, y + 4),
+      Paint()
+        ..strokeWidth = 1
+        ..color = (bearing == 0 ? Palette.reticle : Palette.alarm).withValues(
+          alpha: 0.5,
+        ),
+    );
+  }
+
+  for (final threat in threats) {
+    final x = xFor(threat.bearing);
+    final alpha = 0.45 + 0.55 * threat.urgency;
+    final paint = Paint()..color = Palette.alarm.withValues(alpha: alpha);
+    switch (threat.kind) {
+      // An escort: a wedge pointing down at its bearing, growing as it closes.
+      case ThreatKind.hunter:
+        final size = 4.5 + 3 * threat.urgency;
+        canvas.drawPath(
+          Path()
+            ..moveTo(x, y - 1)
+            ..lineTo(x - size, y - size - 4)
+            ..lineTo(x + size, y - size - 4)
+            ..close(),
+          paint,
+        );
+      // A mine: a round contact under the rail.
+      case ThreatKind.mine:
+        canvas.drawCircle(Offset(x, y + 8), 2.5 + 1.5 * threat.urgency, paint);
+    }
+  }
+
+  if (threats.isNotEmpty) {
+    final worst = threats.fold<double>(
+      0,
+      (worst, t) => math.max(worst, t.urgency),
+    );
+    drawLabel(
+      canvas,
+      'УГРОЗА',
+      Offset(rect.center.dx, y + 15),
+      size: 8,
+      color: Palette.alarm,
+      opacity: 0.45 + 0.5 * worst,
+    );
+  }
+}
+
 /// Coated glass: tint, vignette, dirt and a chromatic fringe at the edge.
 void paintGlass(
   Canvas canvas,

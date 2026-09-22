@@ -126,6 +126,33 @@ void main() {
     await renderWorld(tester, world);
   });
 
+  testWidgets('the threat strip renders, marks and all', (tester) async {
+    final world = staged();
+    world.vessels.add(
+      Vessel(
+        id: 1,
+        type: VesselClass.destroyer,
+        position: Vec2.fromBearing(-1.1, 900),
+        course: 0,
+        speed: 40,
+      ),
+    );
+    world.mines.add(
+      Mine(
+        id: 2,
+        position: Vec2.fromBearing(0.9, 1500),
+        drift: Vec2.zero,
+        bobPhase: 0,
+      ),
+    );
+    expect(world.threats, hasLength(2));
+
+    // Both are well outside the 30° in the eyepiece: the strip is the only
+    // place they show up at all.
+    await renderWorld(tester, world);
+    await renderWorld(tester, world, size: const Size(220, 220));
+  });
+
   testWidgets('renders in a tiny and a very wide optic', (tester) async {
     await renderWorld(tester, staged(), size: const Size(220, 220));
     await renderWorld(tester, staged(), size: const Size(1600, 500));

@@ -31,6 +31,7 @@ class GameConfig {
     this.hullRadius = 60.0,
     this.depthChargeRange = 1700.0,
     this.depthChargeInterval = const (min: 5.5, max: 11.0),
+    this.threatRange = 2400.0,
     this.spawnInterval = const (min: 3.4, max: 7.0),
     this.maxVessels = 7,
     this.vesselSpeed = const (min: 42.0, max: 88.0),
@@ -104,6 +105,11 @@ class GameConfig {
   /// A hunter this close starts working the boat over with depth charges.
   final double depthChargeRange;
   final ({double min, double max}) depthChargeInterval;
+
+  /// How far out the boat can tell that something means it harm. Inside this
+  /// the hydrophone has it and the threat strip marks its bearing; beyond it
+  /// there is nothing to hear yet, wherever the optics happen to point.
+  final double threatRange;
 
   final ({double min, double max}) spawnInterval;
   final int maxVessels;

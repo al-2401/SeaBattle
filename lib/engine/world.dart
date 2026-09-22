@@ -9,6 +9,25 @@ import 'vec2.dart';
 
 enum GamePhase { ready, running, over }
 
+enum ThreatKind { hunter, mine }
+
+/// Something close enough to hurt the boat, as the hydrophone reports it:
+/// a bearing and how pressing it is. Targets are not in here — finding those
+/// is still the player's job, and the whole game is the narrow field of view.
+class Threat {
+  const Threat({
+    required this.bearing,
+    required this.kind,
+    required this.urgency,
+  });
+
+  final double bearing;
+  final ThreatKind kind;
+
+  /// 0 at the edge of hearing, 1 right on top of the boat.
+  final double urgency;
+}
+
 enum NoticeKind { hit, miss, mine, info }
 
 /// A short message shown across the optics ("ПОПАДАНИЕ!", "МИМО").
@@ -75,6 +94,39 @@ class SeaBattleWorld {
       phase == GamePhase.running && tubesLoaded > 0 && !isReloading;
 
   double get accuracy => shotsFired == 0 ? 0 : hits / shotsFired;
+
+  /// Everything within earshot that can hurt the boat: escorts hunting us and
+  /// mines drifting down on us, wherever they are in the arc.
+  List<Threat> get threats {
+    final found = <Threat>[];
+    double urgencyAt(double range) =>
+        (1 - range / config.threatRange).clamp(0.0, 1.0);
+
+    for (final vessel in vessels) {
+      if (!vessel.type.hunts || vessel.isHit) continue;
+      if (vessel.range > config.threatRange) continue;
+      found.add(
+        Threat(
+          bearing: vessel.bearing,
+          kind: ThreatKind.hunter,
+          urgency: urgencyAt(vessel.range),
+        ),
+      );
+    }
+
+    for (final mine in mines) {
+      if (mine.destroyed || mine.range > config.threatRange) continue;
+      found.add(
+        Threat(
+          bearing: mine.bearing,
+          kind: ThreatKind.mine,
+          urgency: urgencyAt(mine.range),
+        ),
+      );
+    }
+
+    return found;
+  }
 
   /// Roll of the horizon from the swell, radians.
   double get swellRoll =>

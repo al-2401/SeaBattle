@@ -133,6 +133,14 @@ class _PeriscopePainter extends CustomPainter {
     canvas.restore();
 
     paintBearingTape(canvas, rect, sight, world.config.traverseLimit);
+    paintThreatStrip(
+      canvas,
+      rect,
+      sight,
+      world.config.traverseLimit,
+      world.config.fieldOfView,
+      world.threats,
+    );
     paintReticle(canvas, rect, sight);
     paintNotices(canvas, rect, sight, world.notices);
     paintGlass(canvas, rect, localCenter, radius, time);

@@ -470,6 +470,70 @@ void main() {
       }
     });
 
+    test('the threat strip reports hunters and mines, never targets', () {
+      final world = quietSea();
+      world.vessels
+        ..add(
+          target(
+            type: VesselClass.destroyer,
+            range: 1200,
+            bearing: -0.5,
+            speed: 0,
+          ),
+        )
+        // A fat, slow target sitting right alongside is not a threat.
+        ..add(
+          target(
+            type: VesselClass.tanker,
+            range: 1100,
+            bearing: 0.3,
+            speed: 0,
+          ),
+        )
+        // An escort beyond earshot is not reported either.
+        ..add(
+          target(
+            type: VesselClass.patrolBoat,
+            range: _config.threatRange + 300,
+            bearing: 0.9,
+            speed: 0,
+          ),
+        );
+      world.mines.add(
+        Mine(
+          id: 9,
+          position: Vec2.fromBearing(0.7, 800),
+          drift: Vec2.zero,
+          bobPhase: 0,
+        ),
+      );
+
+      final threats = world.threats;
+      expect(threats, hasLength(2));
+
+      final hunter = threats.firstWhere((t) => t.kind == ThreatKind.hunter);
+      expect(hunter.bearing, closeTo(-0.5, 1e-9));
+
+      final mine = threats.firstWhere((t) => t.kind == ThreatKind.mine);
+      expect(mine.bearing, closeTo(0.7, 1e-9));
+      // The nearer contact presses harder.
+      expect(mine.urgency, greaterThan(hunter.urgency));
+    });
+
+    test('a sunk hunter stops being a threat', () {
+      final world = quietSea();
+      final hunter = target(
+        type: VesselClass.destroyer,
+        range: 1200,
+        speed: 0,
+      );
+      world.vessels.add(hunter);
+      expect(world.threats, hasLength(1));
+
+      hunter.sinking = 0.3;
+      expect(world.threats, isEmpty);
+    });
+
     test('a hunter overhead works the boat over', () {
       final world = quietSea();
       world.vessels.add(
