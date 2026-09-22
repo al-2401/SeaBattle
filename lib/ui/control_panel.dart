@@ -404,6 +404,10 @@ class GearDamageLamp extends StatelessWidget {
   }
 }
 
+/// A round waiting in the rack: brass, lit by the same lamps as everything
+/// else in the compartment, but not lit up itself.
+final Color _inRack = Color.lerp(Palette.lamp, const Color(0xFF241A0C), 0.42)!;
+
 /// Torpedoes left, drawn as rounds in the rack.
 class TorpedoRack extends StatelessWidget {
   const TorpedoRack({
@@ -434,14 +438,24 @@ class TorpedoRack extends StatelessWidget {
           children: List.generate(capacity, (i) {
             final present = i < remaining;
             final inTube = i < loaded;
+            // Three states that have to read apart at arm's length on a
+            // phone: lit in the tube, solid brass in the rack, and an empty
+            // slot — which is drawn as a hole in the rack, not as a dimmer
+            // round, because dim against dim is what nobody could tell apart.
             return Container(
               width: 9,
               height: 20,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(4),
                 color: present
-                    ? (inTube ? Palette.lamp : Palette.lamp.withValues(alpha: 0.35))
-                    : Palette.lampOff,
+                    ? (inTube ? Palette.lamp : _inRack)
+                    : Palette.hull,
+                border: present
+                    ? null
+                    : Border.all(
+                        color: Palette.steel.withValues(alpha: 0.28),
+                        width: 1,
+                      ),
                 boxShadow: inTube
                     ? [
                         BoxShadow(
