@@ -328,10 +328,14 @@ class SeaBattleWorld {
     vessel.attackTimer = _randomBetween(config.depthChargeInterval) *
         (1 - 0.35 * difficulty);
 
-    // Near misses shake the boat; only a pattern straight overhead bends
-    // the training gear.
+    // Near misses shake the boat; only a pattern straight overhead bends the
+    // training gear. Closeness is measured across the band an escort can
+    // actually occupy — from the closest any ship comes out to the range it
+    // starts dropping at — because measuring it from zero would make every
+    // pattern a near miss: nothing ever gets closer than `closestApproach`.
+    final band = math.max(1.0, config.depthChargeRange - config.closestApproach);
     final closeness =
-        1 - (vessel.range / config.depthChargeRange).clamp(0.0, 1.0);
+        ((config.depthChargeRange - vessel.range) / band).clamp(0.0, 1.0);
     if (closeness > 0.45 || _random.nextDouble() < closeness) {
       _takeHit('ГЛУБИННАЯ БОМБА', SoundCue.depthCharge);
     } else {

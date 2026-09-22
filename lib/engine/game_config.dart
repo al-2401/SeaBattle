@@ -29,7 +29,7 @@ class GameConfig {
     this.maxRange = 6000.0,
     this.closestApproach = 1000.0,
     this.hullRadius = 60.0,
-    this.depthChargeRange = 1700.0,
+    this.depthChargeRange = 1200.0,
     this.depthChargeInterval = const (min: 5.5, max: 11.0),
     this.threatRange = 2400.0,
     this.spawnInterval = const (min: 3.4, max: 7.0),
