@@ -9,6 +9,7 @@ import '../engine/world.dart';
 import 'control_panel.dart';
 import 'painters/sea_painter.dart';
 import 'palette.dart';
+import 'strings.dart';
 import 'periscope_view.dart';
 
 class GamePage extends StatefulWidget {
@@ -210,7 +211,9 @@ class _GamePageState extends State<GamePage>
   /// the way a phone is held on its side.
   Widget _landscapeCabinet(Size size) {
     final side = ((size.width - size.height) / 2).clamp(150.0, 300.0);
-    final control = math.min(side * 0.72, size.height * 0.36).clamp(80.0, 150.0);
+    final control = math
+        .min(side * 0.72, size.height * 0.36)
+        .clamp(80.0, 150.0);
     return Row(
       children: [
         _SidePanel(
@@ -224,11 +227,11 @@ class _GamePageState extends State<GamePage>
               runSpacing: 8,
               children: [
                 CabinetGauge(
-                  label: 'СЧЁТ',
+                  label: Ru.score,
                   value: '${_world.score}'.padLeft(4, '0'),
                 ),
                 CabinetGauge(
-                  label: 'РЕКОРД',
+                  label: Ru.best,
                   value: '${_world.bestScore}'.padLeft(4, '0'),
                   color: Palette.steel,
                 ),
@@ -325,7 +328,6 @@ class _TitlePlate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bearingDeg = world.periscope.heading * 180 / math.pi;
-    final side = bearingDeg < -0.5 ? 'Л' : (bearingDeg > 0.5 ? 'П' : '');
     return FittedBox(
       fit: BoxFit.scaleDown,
       alignment: alignEnd ? Alignment.centerRight : Alignment.centerLeft,
@@ -335,7 +337,7 @@ class _TitlePlate extends StatelessWidget {
             : CrossAxisAlignment.start,
         children: [
           Text(
-            'МОРСКОЙ БОЙ',
+            Ru.title,
             style: kStencil.copyWith(
               fontSize: 15,
               color: Palette.reticle.withValues(alpha: 0.85),
@@ -343,7 +345,7 @@ class _TitlePlate extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           Text(
-            'ПЕЛЕНГ $side${bearingDeg.abs().round()}°',
+            Ru.bearing(bearingDeg),
             style: kStencil.copyWith(
               fontSize: 11,
               color: Palette.steel.withValues(alpha: 0.8),
@@ -424,13 +426,13 @@ class _StatusBar extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               CabinetGauge(
-                label: 'СЧЁТ',
+                label: Ru.score,
                 value: '${world.score}'.padLeft(4, '0'),
               ),
               if (roomForRecord) ...[
                 const SizedBox(width: 14),
                 CabinetGauge(
-                  label: 'РЕКОРД',
+                  label: Ru.best,
                   value: '${world.bestScore}'.padLeft(4, '0'),
                   color: Palette.steel,
                 ),
@@ -486,7 +488,7 @@ class _SoundLamp extends StatelessWidget {
             ),
             const SizedBox(width: 6),
             Text(
-              'ЗВУК',
+              Ru.sound,
               style: kStencil.copyWith(
                 fontSize: 9,
                 color: (on ? Palette.lamp : Palette.steel).withValues(
@@ -548,7 +550,7 @@ class _ControlDeck extends StatelessWidget {
                 if (showKeyHints) ...[
                   const SizedBox(height: 8),
                   Text(
-                    '← → ПОВОРОТ    ПРОБЕЛ ЗАЛП    M ЗВУК    R ЗАНОВО',
+                    Ru.keyHints,
                     style: kStencil.copyWith(
                       fontSize: 9,
                       color: Palette.steel.withValues(alpha: 0.55),
@@ -589,55 +591,56 @@ class _PhaseOverlay extends StatelessWidget {
     return Container(
       color: Colors.black.withValues(alpha: 0.72),
       alignment: Alignment.center,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              over ? 'ОТБОЙ' : 'МОРСКОЙ БОЙ',
-              style: kStencil.copyWith(
-                fontSize: 30,
-                color: Palette.lamp,
-                shadows: [
-                  const Shadow(color: Palette.lamp, blurRadius: 24),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            if (over) ...[
-              _statLine('ОЧКИ', '${world.score}'),
-              _statLine('ПОПАДАНИЙ', '${world.hits} / ${world.shotsFired}'),
-              _statLine(
-                'ТОЧНОСТЬ',
-                '${(world.accuracy * 100).round()}%',
-              ),
-              _statLine('ПОПАДАНИЙ В ЛОДКУ', '${world.hullHits}'),
-              _statLine('РЕКОРД', '${world.bestScore}'),
-            ] else
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Text(
-                  'Наводи перископ штурвалом или стрелками. Торпеда идёт '
-                  'долго: стреляй туда, где цель будет, а не туда, где она '
-                  'есть. Держись от охотников подальше — после их бомб привод '
-                  'наводки ходит по инерции, и упреждение придётся брать '
-                  'заранее. До конца патруля.',
-                  textAlign: TextAlign.center,
-                  style: kStencil.copyWith(
-                    fontSize: 12,
-                    height: 1.6,
-                    letterSpacing: 0.6,
-                    color: Palette.reticle.withValues(alpha: 0.78),
-                  ),
+      // The briefing is long enough to outgrow a phone lying on its side, so
+      // the whole card scales down rather than spilling over the edge.
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                over ? Ru.patrolOver : Ru.title,
+                style: kStencil.copyWith(
+                  fontSize: 30,
+                  color: Palette.lamp,
+                  shadows: [const Shadow(color: Palette.lamp, blurRadius: 24)],
                 ),
               ),
-            const SizedBox(height: 22),
-            _StartButton(
-              label: over ? 'ЕЩЁ РАЗ' : 'ПОГРУЖЕНИЕ',
-              onPressed: onStart,
-            ),
-          ],
+              const SizedBox(height: 14),
+              if (over) ...[
+                _statLine(Ru.points, '${world.score}'),
+                _statLine(
+                  Ru.hitsOfShots,
+                  '${world.hits} / ${world.shotsFired}',
+                ),
+                _statLine(Ru.accuracy, '${(world.accuracy * 100).round()}%'),
+                _statLine(Ru.hullHits, '${world.hullHits}'),
+                if (world.neutralsSunk > 0)
+                  _statLine(Ru.neutralsSunk, '${world.neutralsSunk}'),
+                _statLine(Ru.best, '${world.bestScore}'),
+              ] else
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Text(
+                    Ru.briefing,
+                    textAlign: TextAlign.center,
+                    style: kStencil.copyWith(
+                      fontSize: 12,
+                      height: 1.6,
+                      letterSpacing: 0.6,
+                      color: Palette.reticle.withValues(alpha: 0.78),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 22),
+              _StartButton(
+                label: over ? Ru.again : Ru.dive,
+                onPressed: onStart,
+              ),
+            ],
+          ),
         ),
       ),
     );

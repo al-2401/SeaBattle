@@ -28,12 +28,14 @@ Vessel target({
   double bearing = 0,
   double course = math.pi / 2,
   double speed = 0,
+  Allegiance allegiance = Allegiance.enemy,
 }) => Vessel(
   id: 1,
   type: type,
   position: Vec2.fromBearing(bearing, range),
   course: course,
   speed: speed,
+  allegiance: allegiance,
 );
 
 void advance(SeaBattleWorld world, double seconds, {double step = 1 / 60}) {
@@ -255,7 +257,7 @@ void main() {
     test('traffic cycles: ships come in, cross, and are cleared', () {
       final world = freshWorld()..start();
       final seen = <int>{};
-      for (var t = 0.0; t < 240; t += 0.05) {
+      for (var t = 0.0; t < 420; t += 0.05) {
         world.update(0.05);
         seen.addAll(world.vessels.map((v) => v.id));
         expect(world.vessels.length, lessThanOrEqualTo(_config.maxVessels));
@@ -468,6 +470,114 @@ void main() {
         world.update(0.05);
         expect(world.drainCues(), isNot(contains(SoundCue.horn)));
       }
+    });
+
+    test('a flag is only read while the ship is held in the sight', () {
+      final world = quietSea();
+      // Off to one side, outside the 30° in the eyepiece.
+      final ship = target(
+        type: VesselClass.freighter,
+        range: 1400,
+        bearing: 0.9,
+      );
+      world.vessels.add(ship);
+
+      advance(world, 10);
+      expect(ship.recognition, 0, reason: 'nobody was looking at her');
+
+      world.periscope.heading = 0.9;
+      advance(world, _config.identifyTime * 2);
+      expect(ship.isIdentified, isTrue);
+    });
+
+    test('a ship beyond flag range stays a shape however long you look', () {
+      final world = quietSea();
+      final ship = target(
+        type: VesselClass.tanker,
+        range: _config.flagRange + 500,
+      );
+      world.vessels.add(ship);
+
+      advance(world, 30);
+
+      expect(ship.recognition, 0);
+      expect(ship.isIdentified, isFalse);
+    });
+
+    test('reading a neutral says so before you waste a torpedo', () {
+      final world = quietSea();
+      world.vessels.add(
+        target(
+          type: VesselClass.freighter,
+          range: 1400,
+          allegiance: Allegiance.neutral,
+        ),
+      );
+
+      advance(world, _config.identifyTime * 2);
+
+      expect(
+        world.notices.any((n) => n.code == NoticeCode.neutralIdentified),
+        isTrue,
+      );
+    });
+
+    test('sinking a neutral costs score and buys no torpedo back', () {
+      final world = quietSea();
+      final ship = target(
+        type: VesselClass.tanker,
+        range: 1400,
+        allegiance: Allegiance.neutral,
+      );
+      world.vessels.add(ship);
+      world.score = 1000;
+      final stock = world.torpedoesRemaining;
+
+      world.fire();
+      advance(world, 1400 / _config.torpedoSpeed + 0.5);
+
+      expect(ship.isHit, isTrue);
+      expect(world.neutralsSunk, 1);
+      expect(world.score, 1000 - _config.neutralPenalty);
+      expect(world.torpedoesRemaining, stock - 1);
+    });
+
+    test('the score never goes below zero, however bad the patrol', () {
+      final world = quietSea();
+      world.vessels.add(
+        target(
+          type: VesselClass.freighter,
+          range: 1400,
+          allegiance: Allegiance.neutral,
+        ),
+      );
+
+      world.fire();
+      advance(world, 1400 / _config.torpedoSpeed + 0.5);
+
+      expect(world.score, 0);
+    });
+
+    test('only merchants ever sail under a neutral flag', () {
+      final world = freshWorld()..start();
+      var neutrals = 0;
+      for (var t = 0.0; t < 240; t += 0.05) {
+        world.update(0.05);
+        for (final vessel in world.vessels) {
+          if (vessel.allegiance != Allegiance.neutral) continue;
+          neutrals++;
+          expect(
+            vessel.type.hunts,
+            isFalse,
+            reason: 'an escort under a neutral flag fools nobody',
+          );
+          expect(
+            vessel.type,
+            anyOf(VesselClass.freighter, VesselClass.tanker),
+          );
+        }
+      }
+      expect(neutrals, greaterThan(0), reason: 'no neutral traffic at all');
     });
 
     test('the threat strip reports hunters and mines, never targets', () {

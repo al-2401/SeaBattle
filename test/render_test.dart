@@ -126,6 +126,27 @@ void main() {
     await renderWorld(tester, world);
   });
 
+  testWidgets('flags and neutrality markings render as they are read', (
+    tester,
+  ) async {
+    for (final read in const [0.0, 0.5, 1.0]) {
+      final world = staged();
+      for (final allegiance in Allegiance.values) {
+        world.vessels.add(
+          Vessel(
+            id: allegiance.index + 1,
+            type: VesselClass.tanker,
+            position: Vec2.fromBearing(allegiance.index * 0.16 - 0.08, 1400),
+            course: math.pi / 2,
+            speed: 30,
+            allegiance: allegiance,
+          )..recognition = read,
+        );
+      }
+      await renderWorld(tester, world);
+    }
+  });
+
   testWidgets('the threat strip renders, marks and all', (tester) async {
     final world = staged();
     world.vessels.add(

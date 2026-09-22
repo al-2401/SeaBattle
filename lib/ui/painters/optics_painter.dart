@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../engine/sight.dart';
 import '../../engine/world.dart';
 import '../palette.dart';
+import '../strings.dart';
 
 void drawLabel(
   Canvas canvas,
@@ -149,9 +150,7 @@ void paintBearingTape(
       paint,
     );
     if (major) {
-      final label = deg == 0
-          ? 'НОС'
-          : '${deg < 0 ? 'Л' : 'П'}${deg.abs()}';
+      final label = Ru.bearingMark(deg);
       drawLabel(
         canvas,
         label,
@@ -267,7 +266,7 @@ void paintThreatStrip(
     );
     drawLabel(
       canvas,
-      'УГРОЗА',
+      Ru.threat,
       Offset(rect.center.dx, y + 15),
       size: 8,
       color: Palette.alarm,
@@ -446,7 +445,7 @@ void paintBezel(
       );
       drawLabel(
         canvas,
-        'УПОР',
+        Ru.stop,
         at + Offset(0, 16),
         size: 8,
         color: Palette.alarm,
@@ -475,7 +474,7 @@ void paintNotices(
     final y = sight.horizonY + rect.height * 0.20 + index * 22;
     drawLabel(
       canvas,
-      notice.text,
+      Ru.notice(notice),
       Offset(sight.centerX, y),
       size: notice.kind == NoticeKind.hit ? 17 : 13,
       color: color,

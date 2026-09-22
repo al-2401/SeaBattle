@@ -30,13 +30,36 @@ class Threat {
 
 enum NoticeKind { hit, miss, mine, info }
 
-/// A short message shown across the optics ("ПОПАДАНИЕ!", "МИМО").
-class Notice {
-  Notice(this.text, this.kind, this.ttl);
+/// What the engine has to say. It names the event and nothing else: the words
+/// for it, and the language they are in, belong to the presenter.
+enum NoticeCode {
+  searching,
+  tubesReady,
+  reloading,
+  missed,
+  mineDestroyed,
+  bombing,
+  depthChargeHit,
+  mineAlongside,
+  hullStruck,
+  targetHit,
+  neutralSunk,
+  neutralIdentified,
+  enemyIdentified,
+  ammoOut,
+}
 
-  final String text;
+/// A short message shown across the optics.
+class Notice {
+  Notice(this.code, this.kind, this.ttl, {this.vessel, this.points});
+
+  final NoticeCode code;
   final NoticeKind kind;
   double ttl;
+
+  /// Set on [NoticeCode.targetHit]: what was sunk and for how much.
+  final VesselClass? vessel;
+  final int? points;
 }
 
 /// The whole simulation: periscope, traffic, torpedoes, score.
@@ -77,6 +100,9 @@ class SeaBattleWorld {
 
   /// Times the boat has been hit this patrol.
   int hullHits = 0;
+
+  /// Neutrals sent down this patrol. Nothing to be proud of.
+  int neutralsSunk = 0;
 
   /// Fades from 1 to 0 after a blow lands; the view shakes the optics by it.
   double shock = 0;
@@ -150,6 +176,7 @@ class SeaBattleWorld {
     shotsFired = 0;
     hits = 0;
     hullHits = 0;
+    neutralsSunk = 0;
     shock = 0;
     elapsed = 0;
     reloadTimer = 0;
@@ -169,7 +196,7 @@ class SeaBattleWorld {
     if (phase == GamePhase.running) return;
     if (phase == GamePhase.over) reset();
     phase = GamePhase.running;
-    _notify('ПОИСК ЦЕЛИ', NoticeKind.info, 1.6);
+    _notify(NoticeCode.searching, NoticeKind.info, 1.6);
   }
 
   /// Hands over the noises queued since the last call and empties the queue.
@@ -201,7 +228,7 @@ class SeaBattleWorld {
       reloadTimer = math.max(0, reloadTimer - dt);
       if (reloadTimer == 0 && torpedoesRemaining > 0) {
         tubesLoaded = math.min(config.torpedoSalvoSize, torpedoesRemaining);
-        _notify('ТОРПЕДЫ ГОТОВЫ', NoticeKind.info, 1.0);
+        _notify(NoticeCode.tubesReady, NoticeKind.info, 1.0);
         _cues.add(SoundCue.reload);
       }
     }
@@ -220,7 +247,7 @@ class SeaBattleWorld {
       start();
     }
     if (!canFire) {
-      if (isReloading) _notify('ПЕРЕЗАРЯДКА', NoticeKind.info, 0.8);
+      if (isReloading) _notify(NoticeCode.reloading, NoticeKind.info, 0.8);
       return false;
     }
 
@@ -248,18 +275,20 @@ class SeaBattleWorld {
   void _updateTraffic(double dt) {
     for (final vessel in vessels) {
       vessel.update(dt);
+      _identify(vessel, dt);
       _workOverTheBoat(vessel, dt);
     }
     vessels.removeWhere((v) => v.isGone || _shouldRetire(v));
 
     for (final mine in mines) {
       mine.update(dt);
-      if (!mine.destroyed && mine.range <= config.hullRadius + config.mineRadius) {
+      if (!mine.destroyed &&
+          mine.range <= config.hullRadius + config.mineRadius) {
         mine.destroyed = true;
         blasts.add(
           Blast(position: mine.position, kind: BlastKind.mine, duration: 1.3),
         );
-        _takeHit('МИНА У БОРТА', SoundCue.mine);
+        _takeHit(NoticeCode.mineAlongside, SoundCue.mine);
       }
     }
     mines.removeWhere((m) => m.destroyed || m.range > config.maxRange * 1.8);
@@ -285,8 +314,43 @@ class SeaBattleWorld {
     _mineTimer -= dt;
     if (_mineTimer <= 0) {
       if (mines.length < config.maxMines) _spawnMine();
-      _mineTimer = _randomBetween(config.mineSpawnInterval) *
-          (1 - 0.45 * difficulty);
+      _mineTimer =
+          _randomBetween(config.mineSpawnInterval) * (1 - 0.45 * difficulty);
+    }
+  }
+
+  /// Reads the flag at a ship's masthead — slowly, and only while she is held
+  /// in the field of view.
+  ///
+  /// This is the other half of the narrow arc: the optics show 30°, the gear
+  /// is only quick while it is sound, and a ship has to be kept in that slice
+  /// long enough to be sure whose she is. A crossing target gives you a few
+  /// seconds, and identifying costs exactly the seconds you would have spent
+  /// taking the lead.
+  void _identify(Vessel vessel, double dt) {
+    if (vessel.isIdentified || vessel.isHit) return;
+    final offAxis = angleDelta(periscope.heading, vessel.bearing).abs();
+    if (offAxis > config.fieldOfView / 2) return;
+    if (vessel.range > config.flagRange) return;
+
+    // Close to, the flag stands out at once; out at the limit it takes twice
+    // as long and a steady sight picture.
+    final closeness = 1 - vessel.range / config.flagRange;
+    final was = vessel.recognition;
+    vessel.recognition = math.min(
+      1.0,
+      was + dt * (0.45 + 0.55 * closeness) / config.identifyTime,
+    );
+
+    if (was < 1 && vessel.isIdentified) {
+      _notify(
+        vessel.allegiance == Allegiance.neutral
+            ? NoticeCode.neutralIdentified
+            : NoticeCode.enemyIdentified,
+        NoticeKind.info,
+        1.6,
+        vessel: vessel.type,
+      );
     }
   }
 
@@ -306,7 +370,7 @@ class SeaBattleWorld {
       // Only once per ship: it is over us for several ticks running.
       if (!vessel.hasRammed) {
         vessel.hasRammed = true;
-        _takeHit('УДАР ПО КОРПУСУ', SoundCue.hit);
+        _takeHit(NoticeCode.hullStruck, SoundCue.hit);
       }
       return;
     }
@@ -325,33 +389,38 @@ class SeaBattleWorld {
 
     vessel.attackTimer -= dt;
     if (vessel.attackTimer > 0) return;
-    vessel.attackTimer = _randomBetween(config.depthChargeInterval) *
-        (1 - 0.35 * difficulty);
+    vessel.attackTimer =
+        _randomBetween(config.depthChargeInterval) * (1 - 0.35 * difficulty);
 
     // Near misses shake the boat; only a pattern straight overhead bends the
     // training gear. Closeness is measured across the band an escort can
     // actually occupy — from the closest any ship comes out to the range it
     // starts dropping at — because measuring it from zero would make every
     // pattern a near miss: nothing ever gets closer than `closestApproach`.
-    final band = math.max(1.0, config.depthChargeRange - config.closestApproach);
-    final closeness =
-        ((config.depthChargeRange - vessel.range) / band).clamp(0.0, 1.0);
+    final band = math.max(
+      1.0,
+      config.depthChargeRange - config.closestApproach,
+    );
+    final closeness = ((config.depthChargeRange - vessel.range) / band).clamp(
+      0.0,
+      1.0,
+    );
     if (closeness > 0.45 || _random.nextDouble() < closeness) {
-      _takeHit('ГЛУБИННАЯ БОМБА', SoundCue.depthCharge);
+      _takeHit(NoticeCode.depthChargeHit, SoundCue.depthCharge);
     } else {
       shock = math.max(shock, 0.45);
-      _notify('БОМБЁЖКА', NoticeKind.mine, 1.2);
+      _notify(NoticeCode.bombing, NoticeKind.mine, 1.2);
       _cues.add(SoundCue.depthCharge);
     }
   }
 
   /// The boat takes a blow: the training gear is bent a little further, and
   /// it stays bent for the rest of the patrol.
-  void _takeHit(String text, SoundCue cue) {
+  void _takeHit(NoticeCode code, SoundCue cue) {
     hullHits++;
     periscope.wear(config.gearDamagePerHit);
     shock = 1;
-    _notify(text, NoticeKind.mine, 2.0);
+    _notify(code, NoticeKind.mine, 2.0);
     _cues.add(cue);
   }
 
@@ -384,8 +453,7 @@ class SeaBattleWorld {
   double _pickSpawnBearing() {
     final clear = config.fieldOfView * 0.85;
     for (var attempt = 0; attempt < 8; attempt++) {
-      final bearing =
-          (_random.nextDouble() * 2 - 1) * config.spawnBearing;
+      final bearing = (_random.nextDouble() * 2 - 1) * config.spawnBearing;
       if (angleDelta(periscope.heading, bearing).abs() > clear) return bearing;
     }
     // Fall back to the far side of the arc from the periscope.
@@ -419,7 +487,16 @@ class SeaBattleWorld {
       config.closestApproach,
       2600.0,
     );
-    final offset = math.asin((cpa / range).clamp(0.15, 0.95));
+    // The track leaves the line of sight by asin(cpa / range), and that ratio
+    // is what the closest approach actually turns out to be — so the floor
+    // has to go on the ratio, not on `cpa`. Clamping only `cpa` let a ship
+    // that spawned near the inner edge cross at 0.95 of her spawn range,
+    // which is inside the kilometre nothing is supposed to come within.
+    final ratio = (cpa / range).clamp(
+      (config.closestApproach / range).clamp(0.15, 0.95),
+      0.95,
+    );
+    final offset = math.asin(ratio);
     final course = wrapAngle(bearing - side * (math.pi - offset));
 
     vessels.add(
@@ -429,9 +506,20 @@ class SeaBattleWorld {
         position: position,
         course: course,
         speed: speed,
+        allegiance: _pickAllegiance(type),
         silhouetteSeed: _random.nextInt(1 << 30),
       ),
     );
+  }
+
+  /// Only merchants sail under a neutral flag — ore carriers and tankers
+  /// going about their business. A warship is nobody's neutral.
+  Allegiance _pickAllegiance(VesselClass type) {
+    const merchants = {VesselClass.freighter, VesselClass.tanker};
+    if (!merchants.contains(type)) return Allegiance.enemy;
+    return _random.nextDouble() < config.neutralShare
+        ? Allegiance.neutral
+        : Allegiance.enemy;
   }
 
   VesselClass _pickVesselClass() {
@@ -482,7 +570,7 @@ class SeaBattleWorld {
             duration: 1.1,
           ),
         );
-        _notify('МИМО', NoticeKind.miss, 1.1);
+        _notify(NoticeCode.missed, NoticeKind.miss, 1.1);
         _cues.add(SoundCue.splash);
       }
     }
@@ -542,7 +630,7 @@ class SeaBattleWorld {
           duration: 1.3,
         ),
       );
-      _notify('МИНА!', NoticeKind.mine, 1.4);
+      _notify(NoticeCode.mineDestroyed, NoticeKind.mine, 1.4);
       _cues.add(SoundCue.mine);
     }
   }
@@ -551,6 +639,32 @@ class SeaBattleWorld {
     torpedo.outcome = TorpedoOutcome.hitVessel;
     vessel.sinking = 0.0001;
     hits++;
+
+    // A neutral counts as a hit — the torpedo did go where it was aimed —
+    // but it is the one thing in the game that takes score away, and it
+    // buys no torpedo back. Whether her flag had been read makes no
+    // difference: not looking is the mistake.
+    if (vessel.allegiance == Allegiance.neutral) {
+      neutralsSunk++;
+      score = math.max(0, score - config.neutralPenalty);
+      blasts.add(
+        Blast(
+          position: vessel.position,
+          kind: BlastKind.hit,
+          duration: 1.6,
+          scale: vessel.type.height / 18,
+        ),
+      );
+      _notify(
+        NoticeCode.neutralSunk,
+        NoticeKind.mine,
+        2.4,
+        vessel: vessel.type,
+        points: -config.neutralPenalty,
+      );
+      _cues.add(SoundCue.hit);
+      return;
+    }
 
     final points = scoreFor(vessel);
     score += points;
@@ -574,7 +688,13 @@ class SeaBattleWorld {
         scale: vessel.type.height / 18,
       ),
     );
-    _notify('${vessel.type.label} +$points', NoticeKind.hit, 1.8);
+    _notify(
+      NoticeCode.targetHit,
+      NoticeKind.hit,
+      1.8,
+      vessel: vessel.type,
+      points: points,
+    );
     _cues.add(SoundCue.hit);
   }
 
@@ -604,9 +724,15 @@ class SeaBattleWorld {
     notices.removeWhere((n) => n.ttl <= 0);
   }
 
-  void _notify(String text, NoticeKind kind, double ttl) {
+  void _notify(
+    NoticeCode code,
+    NoticeKind kind,
+    double ttl, {
+    VesselClass? vessel,
+    int? points,
+  }) {
     notices.removeWhere((n) => n.kind == kind);
-    notices.add(Notice(text, kind, ttl));
+    notices.add(Notice(code, kind, ttl, vessel: vessel, points: points));
     while (notices.length > 3) {
       notices.removeAt(0);
     }
@@ -616,7 +742,7 @@ class SeaBattleWorld {
     if (torpedoesRemaining > 0 || torpedoes.isNotEmpty) return;
     phase = GamePhase.over;
     if (score > bestScore) bestScore = score;
-    _notify('БОЕЗАПАС ИЗРАСХОДОВАН', NoticeKind.info, 4);
+    _notify(NoticeCode.ammoOut, NoticeKind.info, 4);
     _cues.add(SoundCue.gameOver);
   }
 

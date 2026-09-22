@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
 import 'palette.dart';
+import 'strings.dart';
 
 /// The training handle. Dragging it sideways feeds torque into the periscope;
 /// let go and it springs back while the optics keep coasting.
@@ -212,7 +213,7 @@ class _FireButtonState extends State<FireButton> {
           child: Padding(
             padding: EdgeInsets.only(top: widget.diameter * 0.39),
             child: Text(
-              'ТОРПЕДА',
+              Ru.fire,
               style: kStencil.copyWith(
                 fontSize: widget.diameter * 0.085,
                 color: Colors.white.withValues(
@@ -371,7 +372,7 @@ class GearDamageLamp extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          'ПРИВОД',
+          Ru.gear,
           style: kStencil.copyWith(
             fontSize: 9,
             color: (lit == 0 ? Palette.steel : Palette.alarm).withValues(
@@ -428,7 +429,7 @@ class TorpedoRack extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          'ТОРПЕДЫ  $remaining',
+          '${Ru.torpedoes}  $remaining',
           style: kStencil.copyWith(fontSize: 11, color: Palette.lamp),
         ),
         const SizedBox(height: 6),

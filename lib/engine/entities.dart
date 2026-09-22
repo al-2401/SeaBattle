@@ -5,7 +5,6 @@ import 'vec2.dart';
 /// A class of target, with the silhouette and score value that go with it.
 enum VesselClass {
   patrolBoat(
-    label: 'КАТЕР',
     length: 46,
     beam: 9,
     height: 8,
@@ -15,7 +14,6 @@ enum VesselClass {
     hunts: true,
   ),
   submarine(
-    label: 'ПОДЛОДКА',
     length: 82,
     beam: 10,
     height: 9,
@@ -24,7 +22,6 @@ enum VesselClass {
     weight: 0.7,
   ),
   destroyer(
-    label: 'ЭСМИНЕЦ',
     length: 112,
     beam: 13,
     height: 17,
@@ -34,7 +31,6 @@ enum VesselClass {
     hunts: true,
   ),
   cruiser(
-    label: 'КРЕЙСЕР',
     length: 176,
     beam: 21,
     height: 26,
@@ -43,7 +39,6 @@ enum VesselClass {
     weight: 1.3,
   ),
   freighter(
-    label: 'ТРАНСПОРТ',
     length: 152,
     beam: 20,
     height: 21,
@@ -52,7 +47,6 @@ enum VesselClass {
     weight: 1.7,
   ),
   tanker(
-    label: 'ТАНКЕР',
     length: 214,
     beam: 27,
     height: 19,
@@ -62,7 +56,6 @@ enum VesselClass {
   );
 
   const VesselClass({
-    required this.label,
     required this.length,
     required this.beam,
     required this.height,
@@ -71,9 +64,6 @@ enum VesselClass {
     required this.weight,
     this.hunts = false,
   });
-
-  /// Russian name, shown when the target is hit.
-  final String label;
 
   /// Hull length in metres — also the width of the silhouette.
   final double length;
@@ -98,6 +88,10 @@ enum VesselClass {
   final bool hunts;
 }
 
+/// Whose ship this is. Neutrals are not targets: sinking one costs the patrol
+/// its score, and telling them apart is what the flag is for.
+enum Allegiance { enemy, neutral }
+
 /// A surface target crossing the searched arc.
 class Vessel {
   Vessel({
@@ -106,12 +100,22 @@ class Vessel {
     required this.position,
     required this.course,
     required this.speed,
+    this.allegiance = Allegiance.enemy,
     this.silhouetteSeed = 0,
   });
 
   final int id;
   final VesselClass type;
+  final Allegiance allegiance;
   Vec2 position;
+
+  /// How far the identification has got, 0 (a shape) .. 1 (flag read).
+  ///
+  /// It only grows while the ship is held in the field of view, and faster
+  /// the closer it is. Once read, it stays read: the boat has it in the log.
+  double recognition = 0;
+
+  bool get isIdentified => recognition >= 1;
 
   /// Direction of travel, radians, 0 = away from the submarine.
   final double course;

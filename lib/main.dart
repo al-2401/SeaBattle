@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'audio/game_audio.dart';
 import 'ui/game_page.dart';
 import 'ui/palette.dart';
+import 'ui/strings.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,7 +31,7 @@ class SeaBattleApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Морской бой',
+      title: Ru.windowTitle,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,

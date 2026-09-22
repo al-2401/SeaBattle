@@ -25,13 +25,17 @@ class GameConfig {
     this.initialTorpedoes = 12,
     this.maxTorpedoes = 18,
     this.torpedoesPerHit = 1,
-    this.minRange = 1000.0,
+    this.minRange = 1100.0,
     this.maxRange = 6000.0,
     this.closestApproach = 1000.0,
     this.hullRadius = 60.0,
     this.depthChargeRange = 1200.0,
     this.depthChargeInterval = const (min: 5.5, max: 11.0),
     this.threatRange = 2400.0,
+    this.neutralShare = 0.3,
+    this.flagRange = 2200.0,
+    this.identifyTime = 2.2,
+    this.neutralPenalty = 300,
     this.spawnInterval = const (min: 3.4, max: 7.0),
     this.maxVessels = 7,
     this.vesselSpeed = const (min: 42.0, max: 88.0),
@@ -91,8 +95,10 @@ class GameConfig {
   final int maxTorpedoes;
   final int torpedoesPerHit;
 
-  /// Traffic keeps its distance: nothing is drawn closer than this, and
-  /// [maxRange] reaches all the way out to the haze on the horizon.
+  /// Traffic keeps its distance: nothing spawns closer than this, and
+  /// [maxRange] reaches all the way out to the haze on the horizon. It sits a
+  /// little above [closestApproach] on purpose — a crossing track can only be
+  /// held off to about 0.95 of the range a ship appeared at.
   final double minRange;
   final double maxRange;
 
@@ -110,6 +116,19 @@ class GameConfig {
   /// the hydrophone has it and the threat strip marks its bearing; beyond it
   /// there is nothing to hear yet, wherever the optics happen to point.
   final double threatRange;
+
+  /// Share of the merchant traffic sailing under a neutral flag. Warships are
+  /// never neutral — nobody was fooled by an escort.
+  final double neutralShare;
+
+  /// Beyond this the flag at the masthead is a smudge, however long you look.
+  final double flagRange;
+
+  /// Seconds of holding a ship in the field of view, alongside, to read it.
+  final double identifyTime;
+
+  /// What sinking a neutral costs off the score.
+  final int neutralPenalty;
 
   final ({double min, double max}) spawnInterval;
   final int maxVessels;

@@ -46,6 +46,26 @@ void main() {
     }
   });
 
+  test('the engine writes no text for the player to read', () {
+    // The engine names events; the words for them live in lib/ui/strings.dart.
+    // A Russian string literal in here means a future campaign or a second
+    // language would have to be translated out of the rules themselves.
+    final cyrillic = RegExp(r'''['"][^'"]*[А-Яа-яЁё]''');
+    for (final file in dartFilesIn('lib/engine')) {
+      final offenders = file
+          .readAsLinesSync()
+          .where((line) => !line.trimLeft().startsWith('//'))
+          .where(cyrillic.hasMatch)
+          .toList();
+      expect(
+        offenders,
+        isEmpty,
+        reason: '${file.path} spells out something the player reads — that '
+            'belongs in lib/ui/strings.dart, keyed by a code',
+      );
+    }
+  });
+
   test('the engine never reaches into the presentation layer', () {
     for (final file in dartFilesIn('lib/engine')) {
       expect(

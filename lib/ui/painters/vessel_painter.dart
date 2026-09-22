@@ -7,6 +7,108 @@ import '../../engine/sight.dart';
 import '../palette.dart';
 import 'vessel_shapes.dart';
 
+/// The flag at the masthead, and the neutrality markings down the hull.
+///
+/// Both come up out of the murk as the identification runs: at first there is
+/// only a rag on the mast, no more readable than a shape, and by the time the
+/// ship has been held in the sight long enough the colours are plain. A
+/// neutral flies a pale flag with a cross and carries painted bands on her
+/// side, the way Swedish ore carriers did; anything hostile flies dark.
+void _paintColours(
+  Canvas canvas,
+  Vessel vessel, {
+  required Offset Function(Offset) map,
+  required List<List<Offset>> rigging,
+  required double lengthPx,
+  required double heightPx,
+  required double facing,
+  required double time,
+  required double fade,
+}) {
+  // Fly it from the highest thing the ship has.
+  Offset? masthead;
+  for (final line in rigging) {
+    for (final point in line) {
+      if (masthead == null || point.dy < masthead.dy) masthead = point;
+    }
+  }
+  if (masthead == null) return;
+
+  final top = map(masthead);
+  // Oversized on purpose: at two kilometres an honest ensign would be half a
+  // pixel, and the whole mechanic is reading it. This is the same lie as the
+  // exaggerated height of the optics.
+  final flagLength = math.max(4.0, heightPx * 0.52);
+  final flagHeight = math.max(3.0, flagLength * 0.6);
+  // Flies aft, and stirs.
+  final fly = -facing * flagLength;
+  final wave = math.sin(time * 2.6 + vessel.id) * flagHeight * 0.12;
+
+  final read = vessel.recognition;
+  final neutral = vessel.allegiance == Allegiance.neutral;
+  final rect = Rect.fromLTRB(
+    math.min(top.dx, top.dx + fly),
+    top.dy + wave,
+    math.max(top.dx, top.dx + fly),
+    top.dy + flagHeight + wave,
+  );
+
+  // Unread, the flag is the same dark rag whoever it belongs to.
+  final cloth = Color.lerp(
+    Palette.hull,
+    neutral ? Palette.foam : const Color(0xFF241014),
+    read,
+  )!;
+  canvas.drawRect(rect, Paint()..color = cloth.withValues(alpha: 0.95 * fade));
+  // A rim off the sky behind, so the flag is still a flag when it happens to
+  // hang against the ship's own superstructure.
+  canvas.drawRect(
+    rect,
+    Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.8
+      ..color = Palette.hullRim.withValues(alpha: 0.5 * fade),
+  );
+
+  if (neutral && read > 0.55 && flagLength > 5) {
+    // The cross, once there is enough of it to see.
+    final ink = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = math.max(0.8, flagHeight * 0.16)
+      ..color = Palette.alarm.withValues(alpha: (read - 0.55) / 0.45 * fade);
+    canvas.drawLine(
+      Offset(rect.left, rect.center.dy),
+      Offset(rect.right, rect.center.dy),
+      ink,
+    );
+    canvas.drawLine(
+      Offset(rect.left + rect.width * 0.42, rect.top),
+      Offset(rect.left + rect.width * 0.42, rect.bottom),
+      ink,
+    );
+  }
+
+  // Neutrality bands painted on the side, the way they were in life: big,
+  // and meant to be read from exactly this distance.
+  if (neutral && read > 0.35 && lengthPx > 40) {
+    final band = Paint()
+      ..color = Palette.foam.withValues(
+        alpha: 0.55 * ((read - 0.35) / 0.65) * fade,
+      );
+    for (final at in const [-0.22, 0.12]) {
+      canvas.drawRect(
+        Rect.fromLTWH(
+          at * lengthPx * facing,
+          -heightPx * 0.16,
+          lengthPx * 0.06 * facing,
+          heightPx * 0.16,
+        ),
+        band,
+      );
+    }
+  }
+}
+
 /// Draws one target: reflection, bow wave, silhouette, and — once it is hit —
 /// the list and the smoke.
 void paintVessel(
@@ -126,6 +228,21 @@ void paintVessel(
       final b = map(line.last);
       canvas.drawLine(a, b, rigging);
     }
+  }
+
+  // --- flag and neutrality markings ---------------------------------------
+  if (lengthPx > 26 && !vessel.isHit) {
+    _paintColours(
+      canvas,
+      vessel,
+      map: map,
+      rigging: shape.rigging,
+      lengthPx: lengthPx,
+      heightPx: heightPx,
+      facing: facing,
+      time: time,
+      fade: fade,
+    );
   }
 
   // --- damage -------------------------------------------------------------
