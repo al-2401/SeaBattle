@@ -210,7 +210,10 @@ class _GamePageState extends State<GamePage>
   /// wheel under the left thumb and the torpedo button under the right —
   /// the way a phone is held on its side.
   Widget _landscapeCabinet(Size size) {
-    final side = ((size.width - size.height) / 2).clamp(150.0, 300.0);
+    // The wings are only as wide as the controls on them need; everything
+    // left over goes to the optic, which is what lets the window stretch
+    // into a capsule instead of sitting in a square.
+    final side = (size.width * 0.17).clamp(140.0, 220.0);
     final control = math
         .min(side * 0.72, size.height * 0.36)
         .clamp(80.0, 150.0);
@@ -267,10 +270,18 @@ class _GamePageState extends State<GamePage>
               child: _SoundLamp(on: _audio.enabled, onTap: _toggleSound),
             ),
             const Spacer(),
-            TorpedoRack(
-              remaining: _world.torpedoesRemaining,
-              loaded: _world.tubesLoaded,
-              capacity: _world.config.maxTorpedoes,
+            // On a narrow wing the rack wraps onto more rows than the panel
+            // has height for; let it shrink rather than spill.
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: TorpedoRack(
+                  remaining: _world.torpedoesRemaining,
+                  loaded: _world.tubesLoaded,
+                  capacity: _world.config.maxTorpedoes,
+                ),
+              ),
             ),
             const SizedBox(height: 10),
             Center(

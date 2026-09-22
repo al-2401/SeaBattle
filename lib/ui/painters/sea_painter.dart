@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../../engine/geometry.dart';
 import '../../engine/sight.dart';
 import '../../engine/vec2.dart';
 import '../palette.dart';
@@ -14,6 +15,25 @@ class WaveCrest {
   final double range;
   final double phase;
   final double width;
+}
+
+/// A bank of cloud, fixed in world space like everything else out there.
+class CloudBank {
+  const CloudBank(this.bearing, this.height, this.width, this.thickness,
+      this.shade, this.seed);
+
+  /// Where it stands, and how high above the horizon it sits — as a fraction
+  /// of the window, because clouds are too far away for range to mean much.
+  final double bearing;
+  final double height;
+
+  /// Angular width, radians, and how deep the bank is drawn.
+  final double width;
+  final double thickness;
+
+  /// 0 the palest scud, 1 the heavy stuff low down.
+  final double shade;
+  final int seed;
 }
 
 /// A distant headland, there to give the eye a fixed bearing to steer by.
@@ -55,10 +75,28 @@ class SeaSurface {
       Landmass(0.62, 11800, 3400, 150, 19),
       Landmass(1.34, 8600, 1500, 120, 31),
     ]);
+
+    // A dozen banks spread right round the arc, low and heavy near the
+    // horizon, thinner and paler higher up.
+    for (var i = 0; i < 14; i++) {
+      final high = random.nextDouble();
+      clouds.add(
+        CloudBank(
+          (random.nextDouble() * 2 - 1) * 1.8,
+          0.05 + high * 0.30,
+          0.10 + random.nextDouble() * 0.26,
+          0.02 + random.nextDouble() * 0.05,
+          1 - high * 0.8,
+          random.nextInt(1 << 20),
+        ),
+      );
+    }
+    clouds.sort((a, b) => b.height.compareTo(a.height));
   }
 
   final List<WaveCrest> waves = [];
   final List<Landmass> landmarks = [];
+  final List<CloudBank> clouds = [];
 }
 
 void paintSkyAndSea(Canvas canvas, Rect rect, Sight sight) {
@@ -97,6 +135,57 @@ void paintSkyAndSea(Canvas canvas, Rect rect, Sight sight) {
         const [0.0, 0.62, 1.0],
       ),
   );
+}
+
+/// Cloud over the horizon: banks of blurred lozenges, standing on bearings of
+/// their own so they slide past as the optics are trained, only far slower
+/// than the swell. They drift on the wind too, a few minutes to cross the arc.
+void paintClouds(
+  Canvas canvas,
+  Rect rect,
+  Sight sight,
+  SeaSurface surface,
+  double time,
+) {
+  for (final cloud in surface.clouds) {
+    // Windage: the higher the bank, the harder it runs.
+    final drift = time * 0.0016 * (0.4 + cloud.height);
+    final centerX = sight.xForBearing(
+      wrapAngle(cloud.bearing + drift),
+    );
+    if (centerX == null) continue;
+
+    final spread = sight.focalLength * math.tan(cloud.width / 2);
+    if (centerX + spread < rect.left || centerX - spread > rect.right) continue;
+
+    final baseY = sight.horizonY - rect.height * cloud.height;
+    final random = math.Random(cloud.seed);
+    final puffs = 5 + random.nextInt(5);
+    final paint = Paint()
+      ..maskFilter = MaskFilter.blur(
+        BlurStyle.normal,
+        rect.height * cloud.thickness * 0.9 + 2,
+      );
+
+    for (var i = 0; i < puffs; i++) {
+      final along = (random.nextDouble() * 2 - 1);
+      final lift = random.nextDouble() * cloud.thickness * rect.height;
+      // Paler and bluer the higher it sits: distance eats the contrast.
+      paint.color = Color.lerp(
+        Palette.skyLow,
+        Palette.haze,
+        0.25 + 0.5 * cloud.shade,
+      )!.withValues(alpha: 0.10 + 0.16 * cloud.shade);
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(centerX + along * spread, baseY - lift),
+          width: spread * (0.5 + random.nextDouble() * 0.9),
+          height: rect.height * cloud.thickness * (0.8 + random.nextDouble()),
+        ),
+        paint,
+      );
+    }
+  }
 }
 
 /// The low sun: a fixed bearing that gives the eye something to steer by.

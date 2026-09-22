@@ -257,14 +257,16 @@ void main() {
     test('traffic cycles: ships come in, cross, and are cleared', () {
       final world = freshWorld()..start();
       final seen = <int>{};
-      for (var t = 0.0; t < 420; t += 0.05) {
+      for (var t = 0.0; t < 900; t += 0.05) {
         world.update(0.05);
         seen.addAll(world.vessels.map((v) => v.id));
         expect(world.vessels.length, lessThanOrEqualTo(_config.maxVessels));
       }
-      // Several arcs' worth of ships must have passed through, not the same
-      // handful sitting there. (An exact count would only pin down the seeded
-      // random stream, so this asserts the behaviour, not the sequence.)
+      // More than an arc's worth of ships must have passed through, not the
+      // same handful sitting there for the whole patrol. Traffic is slow on
+      // purpose, so this is counted over a quarter of an hour. (An exact
+      // count would only pin down the seeded random stream, so this asserts
+      // the behaviour, not the sequence.)
       expect(seen.length, greaterThan(_config.maxVessels * 2));
     });
 
@@ -336,9 +338,9 @@ void main() {
     test('difficulty ramps up but stays bounded', () {
       final world = freshWorld()..start();
       expect(world.difficulty, 0);
-      advance(world, 60, step: 0.05);
+      advance(world, 120, step: 0.05);
       expect(world.difficulty, greaterThan(0.2));
-      advance(world, 200, step: 0.05);
+      advance(world, 400, step: 0.05);
       expect(world.difficulty, 1.0);
     });
 

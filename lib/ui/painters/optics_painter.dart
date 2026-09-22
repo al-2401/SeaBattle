@@ -112,6 +112,18 @@ void paintReticle(Canvas canvas, Rect rect, Sight sight) {
   }
 }
 
+/// Half the width the capsule still has at height [y].
+///
+/// Anything laid out across the field — the bearing tape, the threat strip —
+/// has to stop short of the rounded ends, or it runs out through the glass.
+double fieldHalfWidth(Rect rect, double y) {
+  final radius = rect.height / 2;
+  final dy = (y - rect.center.dy).abs();
+  if (dy >= radius) return 0;
+  final cap = math.sqrt(radius * radius - dy * dy);
+  return rect.width / 2 - radius + cap;
+}
+
 /// Bearing tape across the top of the field: absolute bearings, so it slides
 /// as the periscope is trained and tells you where you are looking.
 void paintBearingTape(
@@ -121,21 +133,26 @@ void paintBearingTape(
   double traverseLimit,
 ) {
   final tapeY = rect.top + rect.height * 0.16;
+  // Labels sit above the tape, so the run is measured where they are.
+  final reach = math.min(
+    fieldHalfWidth(rect, tapeY),
+    fieldHalfWidth(rect, tapeY - 17),
+  ) - 10;
+  if (reach <= 20) return;
+  final left = rect.center.dx - reach;
+  final right = rect.center.dx + reach;
+
   final line = Paint()
     ..style = PaintingStyle.stroke
     ..strokeWidth = 1
     ..color = Palette.reticle.withValues(alpha: 0.35);
 
-  canvas.drawLine(
-    Offset(rect.left + 12, tapeY),
-    Offset(rect.right - 12, tapeY),
-    line,
-  );
+  canvas.drawLine(Offset(left, tapeY), Offset(right, tapeY), line);
 
   final limitDeg = traverseLimit * 180 / math.pi;
   for (var deg = -95; deg <= 95; deg += 5) {
     final x = sight.xForBearing(deg * math.pi / 180);
-    if (x == null || x < rect.left + 6 || x > rect.right - 6) continue;
+    if (x == null || x < left || x > right) continue;
     final major = deg % 15 == 0;
     final beyond = deg.abs() > limitDeg;
     final paint = Paint()
@@ -189,9 +206,13 @@ void paintThreatStrip(
   double fieldOfView,
   List<Threat> threats,
 ) {
-  final width = rect.width * 0.54;
-  final left = rect.center.dx - width / 2;
   final y = rect.top + rect.height * 0.16 + 34;
+  final width = math.min(
+    rect.width * 0.54,
+    (fieldHalfWidth(rect, y + 15) - 12) * 2,
+  );
+  if (width <= 40) return;
+  final left = rect.center.dx - width / 2;
 
   /// Bearing to a position along the strip.
   double xFor(double bearing) =>
@@ -276,29 +297,32 @@ void paintThreatStrip(
 }
 
 /// Coated glass: tint, vignette, dirt and a chromatic fringe at the edge.
-void paintGlass(
-  Canvas canvas,
-  Rect rect,
-  Offset center,
-  double radius,
-  double time,
-) {
-  canvas.drawCircle(
-    center,
-    radius,
+void paintGlass(Canvas canvas, RRect glass, double time) {
+  final rect = glass.outerRect;
+  final center = rect.center;
+  final reach = rect.longestSide / 2;
+
+  canvas.drawRRect(
+    glass,
     Paint()..color = Palette.glassTint.withValues(alpha: 0.055),
   );
 
+  // Vignette. Drawn in a squashed space so the falloff follows the capsule
+  // instead of bulging out of its ends.
+  canvas.save();
+  canvas.translate(center.dx, center.dy);
+  canvas.scale(1.0, rect.height / rect.width);
   canvas.drawCircle(
-    center,
-    radius,
+    Offset.zero,
+    rect.width / 2,
     Paint()
-      ..shader = ui.Gradient.radial(center, radius, [
+      ..shader = ui.Gradient.radial(Offset.zero, rect.width / 2, [
         const Color(0x00000000),
-        Colors.black.withValues(alpha: 0.18),
-        Colors.black.withValues(alpha: 0.86),
-      ], const [0.55, 0.82, 1.0]),
+        Colors.black.withValues(alpha: 0.16),
+        Colors.black.withValues(alpha: 0.80),
+      ], const [0.52, 0.80, 1.0]),
   );
+  canvas.restore();
 
   // Two soft reflections off the prism stack.
   canvas.save();
@@ -306,9 +330,9 @@ void paintGlass(
   canvas.rotate(-0.7);
   canvas.drawOval(
     Rect.fromCenter(
-      center: Offset(-radius * 0.22, -radius * 0.30),
-      width: radius * 0.42,
-      height: radius * 1.35,
+      center: Offset(-reach * 0.22, -reach * 0.18),
+      width: reach * 0.30,
+      height: rect.height * 1.1,
     ),
     Paint()
       ..color = Colors.white.withValues(alpha: 0.035)
@@ -316,9 +340,9 @@ void paintGlass(
   );
   canvas.drawOval(
     Rect.fromCenter(
-      center: Offset(radius * 0.45, radius * 0.1),
-      width: radius * 0.18,
-      height: radius * 0.8,
+      center: Offset(reach * 0.45, rect.height * 0.06),
+      width: reach * 0.12,
+      height: rect.height * 0.7,
     ),
     Paint()
       ..color = Colors.white.withValues(alpha: 0.025)
@@ -329,31 +353,30 @@ void paintGlass(
   // Dust and salt on the outer lens — fixed to the glass, never moving.
   final random = math.Random(4242);
   final dirt = Paint();
-  for (var i = 0; i < 26; i++) {
-    final angle = random.nextDouble() * math.pi * 2;
-    final distance = radius * math.sqrt(random.nextDouble()) * 0.95;
+  for (var i = 0; i < 34; i++) {
     dirt.color = Colors.black.withValues(
       alpha: 0.05 + random.nextDouble() * 0.12,
     );
     canvas.drawCircle(
-      center + Offset(math.cos(angle), math.sin(angle)) * distance,
+      Offset(
+        rect.left + random.nextDouble() * rect.width,
+        rect.top + random.nextDouble() * rect.height,
+      ),
       0.6 + random.nextDouble() * 1.8,
       dirt,
     );
   }
 
-  // Chromatic fringe.
-  canvas.drawCircle(
-    center,
-    radius - 1.5,
+  // Chromatic fringe around the rim of the field.
+  canvas.drawRRect(
+    glass.deflate(1.5),
     Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
       ..color = const Color(0xFF4FC3F7).withValues(alpha: 0.10),
   );
-  canvas.drawCircle(
-    center,
-    radius - 3.5,
+  canvas.drawRRect(
+    glass.deflate(3.5),
     Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
@@ -362,71 +385,97 @@ void paintGlass(
 
   // Faint breathing of the illumination.
   final pulse = 0.012 + 0.008 * math.sin(time * 1.3);
-  canvas.drawCircle(
-    center,
-    radius,
+  canvas.drawRRect(
+    glass,
     Paint()..color = Palette.glassTint.withValues(alpha: pulse),
   );
 }
 
-/// The eyepiece housing around the optic.
+/// The eyepiece housing around the optic: cast collar, rubber eyecup, the
+/// retaining screws that hold the glass in, and the training-stop lamps.
 void paintBezel(
   Canvas canvas,
   Size size,
-  Offset center,
-  double radius, {
+  RRect window, {
   required double stopContact,
   required double trainFraction,
 }) {
-  final outside = Path()
-    ..fillType = PathFillType.evenOdd
-    ..addRect(Offset.zero & size)
-    ..addOval(Rect.fromCircle(center: center, radius: radius));
-  canvas.drawPath(outside, Paint()..color = Palette.bezel);
+  final rect = window.outerRect;
 
-  // Rubber eyecup.
-  canvas.drawCircle(
-    center,
-    radius + 9,
+  // Everything outside the glass is cabinet.
+  canvas.drawPath(
+    Path()
+      ..fillType = PathFillType.evenOdd
+      ..addRect(Offset.zero & size)
+      ..addRRect(window),
+    Paint()..color = Palette.bezel,
+  );
+
+  RRect ring(double outset) => RRect.fromRectAndRadius(
+    rect.inflate(outset),
+    Radius.circular(rect.height / 2 + outset),
+  );
+
+  // Rubber eyecup: thick, and darker at the bottom where the light dies.
+  canvas.drawRRect(
+    ring(9),
     Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 18
       ..shader = ui.Gradient.linear(
-        Offset(center.dx, center.dy - radius),
-        Offset(center.dx, center.dy + radius),
+        Offset(rect.center.dx, rect.top),
+        Offset(rect.center.dx, rect.bottom),
         [Palette.bezelEdge, Palette.rubber, const Color(0xFF05080A)],
         const [0.0, 0.45, 1.0],
       ),
   );
-  canvas.drawCircle(
-    center,
-    radius + 1,
+  // Cast collar outside it, with a lit top edge.
+  canvas.drawRRect(
+    ring(20),
+    Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 6
+      ..shader = ui.Gradient.linear(
+        Offset(rect.center.dx, rect.top - 24),
+        Offset(rect.center.dx, rect.bottom + 24),
+        [Palette.steel.withValues(alpha: 0.45), const Color(0xFF10161A)],
+        const [0.0, 1.0],
+      ),
+  );
+  canvas.drawRRect(
+    ring(1),
     Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
       ..color = Palette.steel.withValues(alpha: 0.25),
   );
 
-  // Retaining screws.
+  // Retaining screws, walked around the capsule at a fixed spacing rather
+  // than at fixed angles — on a long window a dozen evenly spread screws
+  // would bunch up at the ends and leave the straight runs bare.
+  final screwPath = Path()..addRRect(ring(18));
   final screw = Paint()..color = Palette.steel.withValues(alpha: 0.35);
-  for (var i = 0; i < 12; i++) {
-    final angle = i * math.pi / 6 + 0.26;
-    final at = center + Offset(math.cos(angle), math.sin(angle)) * (radius + 18);
-    canvas.drawCircle(at, 2.4, screw);
-    canvas.drawCircle(
-      at,
-      2.4,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 0.7
-        ..color = Colors.black.withValues(alpha: 0.6),
-    );
+  final rim = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 0.7
+    ..color = Colors.black.withValues(alpha: 0.6);
+  for (final metric in screwPath.computeMetrics()) {
+    final count = math.max(10, (metric.length / 52).round());
+    for (var i = 0; i < count; i++) {
+      final at = metric.getTangentForOffset(metric.length * i / count)?.position;
+      if (at == null) continue;
+      canvas.drawCircle(at, 2.4, screw);
+      canvas.drawCircle(at, 2.4, rim);
+    }
   }
 
   // Training-stop lamps, one either side of the housing.
   for (final sign in const [-1.0, 1.0]) {
     final lit = stopContact > 0.02 && trainFraction.sign == sign;
-    final at = center + Offset(sign * (radius + 18), radius * 0.62);
+    final at = Offset(
+      rect.center.dx + sign * (rect.width / 2 + 26),
+      rect.center.dy + rect.height * 0.26,
+    );
     canvas.drawCircle(
       at,
       5,

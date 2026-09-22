@@ -112,8 +112,8 @@ class SeaBattleWorld {
   double _hornTimer = 0;
   int _nextId = 1;
 
-  /// Ramps from 0 to 1 over the first three minutes of a patrol.
-  double get difficulty => (elapsed / 180).clamp(0.0, 1.0);
+  /// Ramps from 0 to 1 over the first six minutes of a patrol.
+  double get difficulty => (elapsed / 360).clamp(0.0, 1.0);
 
   bool get isReloading => reloadTimer > 0;
   bool get canFire =>

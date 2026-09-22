@@ -21,7 +21,7 @@ class GameConfig {
     this.torpedoRange = 6000.0,
     this.torpedoRadius = 9.0,
     this.torpedoSalvoSize = 2,
-    this.reloadTime = 1.9,
+    this.reloadTime = 3.4,
     this.initialTorpedoes = 12,
     this.maxTorpedoes = 18,
     this.torpedoesPerHit = 1,
@@ -30,16 +30,16 @@ class GameConfig {
     this.closestApproach = 1000.0,
     this.hullRadius = 60.0,
     this.depthChargeRange = 1200.0,
-    this.depthChargeInterval = const (min: 5.5, max: 11.0),
+    this.depthChargeInterval = const (min: 9.0, max: 16.0),
     this.threatRange = 2400.0,
     this.neutralShare = 0.3,
     this.flagRange = 2200.0,
     this.identifyTime = 1.3,
     this.neutralPenalty = 300,
-    this.spawnInterval = const (min: 3.4, max: 7.0),
-    this.maxVessels = 7,
-    this.vesselSpeed = const (min: 42.0, max: 88.0),
-    this.mineSpawnInterval = const (min: 11.0, max: 22.0),
+    this.spawnInterval = const (min: 9.0, max: 18.0),
+    this.maxVessels = 6,
+    this.vesselSpeed = const (min: 16.0, max: 34.0),
+    this.mineSpawnInterval = const (min: 20.0, max: 38.0),
     this.maxMines = 3,
     this.mineRange = const (min: 900.0, max: 2000.0),
     this.mineRadius = 26.0,
@@ -130,8 +130,16 @@ class GameConfig {
   /// What sinking a neutral costs off the score.
   final int neutralPenalty;
 
+  /// How often new traffic comes over the horizon, and how much of it is in
+  /// the arc at once. Deliberately unhurried: this is a patrol, not a
+  /// shooting gallery — the long waits are what make a contact matter.
   final ({double min, double max}) spawnInterval;
   final int maxVessels;
+
+  /// Transit speed, m/s. Still well above anything that floated — 16 m/s is
+  /// 31 knots — but slow enough that a ship takes the better part of a minute
+  /// to cross the sector, which is what leaves room to identify her, take the
+  /// lead, and watch the torpedo run.
   final ({double min, double max}) vesselSpeed;
 
   final ({double min, double max}) mineSpawnInterval;
