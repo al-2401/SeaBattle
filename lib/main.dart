@@ -8,6 +8,15 @@ import 'ui/palette.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
+  // A phone is held on its side, like the cabinet's eyepiece: wheel under
+  // one thumb, torpedo button under the other. Either way round will do.
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
+  // No status or navigation bar over the optic; a swipe from the edge
+  // brings them back for a moment.
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   runApp(const SeaBattleApp());
 }
 

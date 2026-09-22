@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sea_battle/audio/game_audio.dart';
 import 'package:sea_battle/engine/sound_cue.dart';
 import 'package:sea_battle/main.dart';
+import 'package:sea_battle/ui/control_panel.dart';
+import 'package:sea_battle/ui/periscope_view.dart';
 
 /// Stands in for the audio device: records what the cabinet asked for
 /// without going near a real one.
@@ -92,6 +94,66 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.byType(MaterialApp), findsOneWidget);
+  });
+
+  testWidgets('it lays out on a phone held on its side', (tester) async {
+    tester.view.physicalSize = const Size(844, 390);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(SeaBattleApp(audio: FakeAudio()));
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(tester.takeException(), isNull);
+    // Wheel on the left wing, button on the right, optic between them.
+    final wheel = tester.getCenter(find.byType(HelmWheel));
+    final optic = tester.getCenter(find.byType(PeriscopeView));
+    final button = tester.getCenter(find.byType(FireButton));
+    expect(wheel.dx, lessThan(optic.dx));
+    expect(button.dx, greaterThan(optic.dx));
+  });
+
+  testWidgets('a touch in the corner beside the torpedo button does not fire', (
+    tester,
+  ) async {
+    await tester.pumpWidget(SeaBattleApp(audio: FakeAudio()));
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.tap(find.text('ПОГРУЖЕНИЕ'));
+    await tester.pump(const Duration(milliseconds: 16));
+
+    final box = tester.getRect(find.byType(FireButton));
+    await tester.tapAt(box.topLeft + const Offset(3, 3));
+    await tester.tapAt(box.bottomRight - const Offset(3, 3));
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(find.text('ТОРПЕДЫ  12'), findsOneWidget);
+
+    await tester.tapAt(box.center);
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(find.text('ТОРПЕДЫ  11'), findsOneWidget);
+  });
+
+  testWidgets('a tap fires on the eyepiece glass but not on the cabinet', (
+    tester,
+  ) async {
+    // Tall window: plenty of dark cabinet above and below the round optic.
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(SeaBattleApp(audio: FakeAudio()));
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.tap(find.text('ПОГРУЖЕНИЕ'));
+    await tester.pump(const Duration(milliseconds: 16));
+
+    final optic = tester.getRect(find.byType(PeriscopeView));
+    await tester.tapAt(Offset(optic.center.dx, optic.top + 6));
+    await tester.tapAt(Offset(optic.center.dx, optic.bottom - 6));
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(find.text('ТОРПЕДЫ  12'), findsOneWidget);
+
+    await tester.tapAt(optic.center);
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(find.text('ТОРПЕДЫ  11'), findsOneWidget);
   });
 
   testWidgets('firing reaches the audio device', (tester) async {

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import 'palette.dart';
 
@@ -177,33 +178,45 @@ class _FireButtonState extends State<FireButton> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) {
-        setState(() => _down = true);
-        widget.onFire();
-      },
-      onTapUp: (_) => setState(() => _down = false),
-      onTapCancel: () => setState(() => _down = false),
-      child: SizedBox(
-        width: widget.diameter,
-        height: widget.diameter,
-        child: CustomPaint(
-          painter: _FireButtonPainter(
-            pressed: _down,
-            enabled: widget.enabled,
-            reloadProgress: widget.reloadProgress,
-          ),
-          child: Center(
-            child: Padding(
-              padding: EdgeInsets.only(top: widget.diameter * 0.39),
-              child: Text(
-                'ТОРПЕДА',
-                style: kStencil.copyWith(
-                  fontSize: widget.diameter * 0.085,
-                  color: Colors.white.withValues(
-                    alpha: widget.enabled ? 0.85 : 0.35,
-                  ),
+    // Only the round button itself answers: touches in the corners of the
+    // square it sits in are turned away, so a thumb landing beside it does
+    // not launch.
+    return _RoundHitArea(
+      center: _FireButtonPainter.centerIn,
+      // The red cap or its steel collar, nowhere else.
+      radius: (size) => _FireButtonPainter.radiusIn(size) + 8,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) {
+          setState(() => _down = true);
+          widget.onFire();
+        },
+        onTapUp: (_) => setState(() => _down = false),
+        onTapCancel: () => setState(() => _down = false),
+        child: _face(),
+      ),
+    );
+  }
+
+  Widget _face() {
+    return SizedBox(
+      width: widget.diameter,
+      height: widget.diameter,
+      child: CustomPaint(
+        painter: _FireButtonPainter(
+          pressed: _down,
+          enabled: widget.enabled,
+          reloadProgress: widget.reloadProgress,
+        ),
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.only(top: widget.diameter * 0.39),
+            child: Text(
+              'ТОРПЕДА',
+              style: kStencil.copyWith(
+                fontSize: widget.diameter * 0.085,
+                color: Colors.white.withValues(
+                  alpha: widget.enabled ? 0.85 : 0.35,
                 ),
               ),
             ),
@@ -211,6 +224,46 @@ class _FireButtonState extends State<FireButton> {
         ),
       ),
     );
+  }
+}
+
+/// Lets touches through to [child] only inside a circle, so a round control
+/// drawn in a square box does not answer in the box's corners.
+class _RoundHitArea extends SingleChildRenderObjectWidget {
+  const _RoundHitArea({
+    required this.center,
+    required this.radius,
+    super.child,
+  });
+
+  final Offset Function(Size size) center;
+  final double Function(Size size) radius;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderRoundHitArea(center, radius);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderRoundHitArea renderObject,
+  ) {
+    renderObject
+      ..center = center
+      ..radius = radius;
+  }
+}
+
+class _RenderRoundHitArea extends RenderProxyBox {
+  _RenderRoundHitArea(this.center, this.radius);
+
+  Offset Function(Size size) center;
+  double Function(Size size) radius;
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    if ((position - center(size)).distance > radius(size)) return false;
+    return super.hitTest(result, position: position);
   }
 }
 
@@ -225,10 +278,13 @@ class _FireButtonPainter extends CustomPainter {
   final bool enabled;
   final double reloadProgress;
 
+  static Offset centerIn(Size size) => Offset(size.width / 2, size.height / 2 - 6);
+  static double radiusIn(Size size) => size.width / 2 - 12;
+
   @override
   void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2 - 6);
-    final radius = size.width / 2 - 12;
+    final center = centerIn(size);
+    final radius = radiusIn(size);
 
     canvas.drawCircle(
       center,

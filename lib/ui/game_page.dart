@@ -142,8 +142,6 @@ class _GamePageState extends State<GamePage>
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final compact = size.height < 720 || size.width < 560;
     return Focus(
       focusNode: _focusNode,
       autofocus: true,
@@ -157,41 +155,197 @@ class _GamePageState extends State<GamePage>
           ),
         ),
         child: SafeArea(
-          child: Column(
-            children: [
-              _StatusBar(
-                world: _world,
-                soundOn: _audio.enabled,
-                onToggleSound: _toggleSound,
-              ),
-              Expanded(
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    _PeriscopeSurface(
-                      world: _world,
-                      surface: _surface,
-                      time: _time,
-                      onControl: _setDragControl,
-                      onFire: _fire,
-                    ),
-                    if (_world.phase != GamePhase.running)
-                      _PhaseOverlay(world: _world, onStart: _startPatrol),
-                  ],
-                ),
-              ),
-              LayoutBuilder(
-                builder: (context, constraints) => _ControlDeck(
-                  world: _world,
-                  compact: compact,
-                  width: constraints.maxWidth,
-                  onControl: _setDragControl,
-                  onFire: _fire,
-                ),
-              ),
-            ],
+          child: LayoutBuilder(
+            builder: (context, constraints) =>
+                constraints.maxWidth > constraints.maxHeight
+                ? _landscapeCabinet(constraints.biggest)
+                : _portraitCabinet(constraints.biggest),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _scope() {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _PeriscopeSurface(
+          world: _world,
+          surface: _surface,
+          time: _time,
+          onControl: _setDragControl,
+          onFire: _fire,
+        ),
+        if (_world.phase != GamePhase.running)
+          _PhaseOverlay(world: _world, onStart: _startPatrol),
+      ],
+    );
+  }
+
+  /// Status strip on top, controls along the bottom: a tall window.
+  Widget _portraitCabinet(Size size) {
+    final compact = size.height < 720 || size.width < 560;
+    return Column(
+      children: [
+        _StatusBar(
+          world: _world,
+          soundOn: _audio.enabled,
+          onToggleSound: _toggleSound,
+        ),
+        Expanded(child: _scope()),
+        _ControlDeck(
+          world: _world,
+          compact: compact,
+          width: size.width,
+          onControl: _setDragControl,
+          onFire: _fire,
+        ),
+      ],
+    );
+  }
+
+  /// The eyepiece takes the full height in the middle, with the training
+  /// wheel under the left thumb and the torpedo button under the right —
+  /// the way a phone is held on its side.
+  Widget _landscapeCabinet(Size size) {
+    final side = ((size.width - size.height) / 2).clamp(150.0, 300.0);
+    final control = math.min(side * 0.72, size.height * 0.36).clamp(80.0, 150.0);
+    return Row(
+      children: [
+        _SidePanel(
+          width: side,
+          border: const Border(
+            right: BorderSide(color: Color(0xFF1E262A), width: 2),
+          ),
+          children: [
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                CabinetGauge(
+                  label: 'СЧЁТ',
+                  value: '${_world.score}'.padLeft(4, '0'),
+                ),
+                CabinetGauge(
+                  label: 'РЕКОРД',
+                  value: '${_world.bestScore}'.padLeft(4, '0'),
+                  color: Palette.steel,
+                ),
+              ],
+            ),
+            const Spacer(),
+            Center(
+              child: HelmWheel(
+                heading: _world.periscope.heading,
+                control: _world.periscope.control,
+                onControl: _setDragControl,
+                diameter: control,
+              ),
+            ),
+          ],
+        ),
+        Expanded(child: _scope()),
+        _SidePanel(
+          width: side,
+          border: const Border(
+            left: BorderSide(color: Color(0xFF1E262A), width: 2),
+          ),
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: _TitlePlate(world: _world, alignEnd: false)),
+                _SoundLamp(on: _audio.enabled, onTap: _toggleSound),
+              ],
+            ),
+            const Spacer(),
+            TorpedoRack(
+              remaining: _world.torpedoesRemaining,
+              loaded: _world.tubesLoaded,
+              capacity: _world.config.maxTorpedoes,
+            ),
+            const SizedBox(height: 10),
+            Center(
+              child: FireButton(
+                enabled: _world.canFire,
+                reloadProgress: _reloadProgress,
+                onFire: _fire,
+                diameter: control,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  double get _reloadProgress => _world.reloadTimer <= 0
+      ? 0.0
+      : _world.reloadTimer / _world.config.reloadTime;
+}
+
+/// One wing of the cabinet front in the landscape layout.
+class _SidePanel extends StatelessWidget {
+  const _SidePanel({
+    required this.width,
+    required this.border,
+    required this.children,
+  });
+
+  final double width;
+  final Border border;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(color: const Color(0xFF0C1013), border: border),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
+      ),
+    );
+  }
+}
+
+/// The cabinet's name plate with the bearing readout under it.
+class _TitlePlate extends StatelessWidget {
+  const _TitlePlate({required this.world, this.alignEnd = true});
+
+  final SeaBattleWorld world;
+  final bool alignEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final bearingDeg = world.periscope.heading * 180 / math.pi;
+    final side = bearingDeg < -0.5 ? 'Л' : (bearingDeg > 0.5 ? 'П' : '');
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: alignEnd ? Alignment.centerRight : Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment: alignEnd
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
+        children: [
+          Text(
+            'МОРСКОЙ БОЙ',
+            style: kStencil.copyWith(
+              fontSize: 15,
+              color: Palette.reticle.withValues(alpha: 0.85),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'ПЕЛЕНГ $side${bearingDeg.abs().round()}°',
+            style: kStencil.copyWith(
+              fontSize: 11,
+              color: Palette.steel.withValues(alpha: 0.8),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -229,7 +383,12 @@ class _PeriscopeSurfaceState extends State<_PeriscopeSurface> {
       ),
       onHorizontalDragEnd: (_) => widget.onControl(0),
       onHorizontalDragCancel: () => widget.onControl(0),
-      onTap: widget.onFire,
+      // A tap on the glass fires; the dark cabinet around the optic does
+      // not, or a thumb reaching for the controls would launch by mistake.
+      onTapUp: (d) {
+        final size = context.size;
+        if (size != null && onEyepiece(size, d.localPosition)) widget.onFire();
+      },
       child: PeriscopeView(
         world: widget.world,
         surface: widget.surface,
@@ -252,8 +411,6 @@ class _StatusBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bearingDeg = world.periscope.heading * 180 / math.pi;
-    final side = bearingDeg < -0.5 ? 'Л' : (bearingDeg > 0.5 ? 'П' : '');
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
       child: LayoutBuilder(
@@ -277,32 +434,7 @@ class _StatusBar extends StatelessWidget {
               const Spacer(),
               _SoundLamp(on: soundOn, onTap: onToggleSound),
               const SizedBox(width: 12),
-              Flexible(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerRight,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        'МОРСКОЙ БОЙ',
-                        style: kStencil.copyWith(
-                          fontSize: 15,
-                          color: Palette.reticle.withValues(alpha: 0.85),
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'ПЕЛЕНГ $side${bearingDeg.abs().round()}°',
-                        style: kStencil.copyWith(
-                          fontSize: 11,
-                          color: Palette.steel.withValues(alpha: 0.8),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+              Flexible(child: _TitlePlate(world: world)),
             ],
           );
         },

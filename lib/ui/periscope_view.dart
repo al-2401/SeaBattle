@@ -9,6 +9,14 @@ import 'painters/optics_painter.dart';
 import 'painters/sea_painter.dart';
 import 'painters/vessel_painter.dart';
 
+/// Radius of the eyepiece drawn centred in a box of [size]. The picture and
+/// the touch handling share it, so a tap counts as a shot only on the glass.
+double eyepieceRadius(Size size) => math.min(size.width, size.height) / 2 - 16;
+
+/// Whether [position] (local to a box of [size]) falls on the eyepiece glass.
+bool onEyepiece(Size size, Offset position) =>
+    (position - size.center(Offset.zero)).distance <= eyepieceRadius(size);
+
 /// Everything you see through the eyepiece.
 class PeriscopeView extends StatelessWidget {
   const PeriscopeView({
@@ -50,7 +58,7 @@ class _PeriscopePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = math.min(size.width, size.height) / 2 - 16;
+    final radius = eyepieceRadius(size);
     if (radius <= 20) return;
 
     // Work in a square box around the optic so the field of view always maps
