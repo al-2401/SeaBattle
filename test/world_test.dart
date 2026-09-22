@@ -266,6 +266,47 @@ void main() {
       expect(seen.length, greaterThan(_config.maxVessels * 2));
     });
 
+    test('nothing ever comes closer than a kilometre', () {
+      final world = freshWorld()..start();
+      var closest = double.infinity;
+      for (var t = 0.0; t < 240; t += 0.05) {
+        world.update(0.05);
+        for (final vessel in world.vessels) {
+          if (vessel.isHit) continue;
+          closest = math.min(closest, vessel.range);
+        }
+      }
+      expect(closest, greaterThanOrEqualTo(_config.closestApproach - 1));
+    });
+
+    test('some traffic is out at the horizon', () {
+      final world = freshWorld()..start();
+      var farthest = 0.0;
+      for (var t = 0.0; t < 240; t += 0.05) {
+        world.update(0.05);
+        for (final vessel in world.vessels) {
+          farthest = math.max(farthest, vessel.range);
+        }
+      }
+      expect(farthest, greaterThan(_config.maxRange * 0.8));
+    });
+
+    test('a torpedo runs all the way out to the horizon', () {
+      final world = quietSea();
+      // A ship as far out as traffic ever spawns is still reachable.
+      final ship = target(
+        type: VesselClass.cruiser,
+        range: _config.maxRange - 50,
+      );
+      world.vessels.add(ship);
+      world.fire();
+
+      advance(world, (_config.maxRange - 50) / _config.torpedoSpeed + 0.5);
+
+      expect(world.hits, 1);
+      expect(ship.isHit, isTrue);
+    });
+
     test('spawned ships cross the bow instead of sailing away', () {
       final world = freshWorld()..start();
       advance(world, 3);
@@ -427,6 +468,104 @@ void main() {
         world.update(0.05);
         expect(world.drainCues(), isNot(contains(SoundCue.horn)));
       }
+    });
+
+    test('a hunter overhead works the boat over', () {
+      final world = quietSea();
+      world.vessels.add(
+        target(type: VesselClass.destroyer, range: 900, speed: 0),
+      );
+      expect(world.periscope.damage, 0);
+
+      for (var t = 0.0; t < 40 && world.hullHits == 0; t += 1 / 60) {
+        world.update(1 / 60);
+      }
+
+      expect(world.hullHits, greaterThan(0));
+      expect(world.periscope.damage, greaterThan(0));
+      // The blow is still ringing on the frame it lands: the view shakes by it.
+      expect(world.shock, greaterThan(0));
+    });
+
+    test('a merchant alongside never drops anything', () {
+      final world = quietSea();
+      world.vessels.add(
+        target(type: VesselClass.freighter, range: 900, speed: 0),
+      );
+
+      advance(world, 40);
+
+      expect(world.hullHits, 0);
+      expect(world.periscope.damage, 0);
+    });
+
+    test('a hunter out beyond its attack range is harmless', () {
+      final world = quietSea();
+      world.vessels.add(
+        target(
+          type: VesselClass.destroyer,
+          range: _config.depthChargeRange + 400,
+          speed: 0,
+        ),
+      );
+
+      advance(world, 40);
+
+      expect(world.hullHits, 0);
+    });
+
+    test('a mine that drifts onto the hull goes off against it', () {
+      final world = quietSea();
+      world.mines.add(
+        Mine(
+          id: 1,
+          position: Vec2.fromBearing(0.2, 400),
+          drift: Vec2.fromBearing(0.2, -120),
+          bobPhase: 0,
+        ),
+      );
+
+      advance(world, 5);
+
+      expect(world.mines, isEmpty);
+      expect(world.hullHits, 1);
+      expect(world.periscope.damage, closeTo(_config.gearDamagePerHit, 1e-9));
+    });
+
+    test('a ship running over the boat costs the gear exactly once', () {
+      final world = quietSea();
+      world.vessels.add(
+        Vessel(
+          id: 1,
+          type: VesselClass.tanker,
+          position: Vec2.fromBearing(0, 300),
+          course: math.pi, // straight back down the bearing, over the top
+          speed: 60,
+        ),
+      );
+
+      advance(world, 20);
+
+      expect(world.hullHits, 1);
+      expect(world.periscope.damage, closeTo(_config.gearDamagePerHit, 1e-9));
+    });
+
+    test('damage stays for the rest of the patrol and clears on reset', () {
+      final world = quietSea();
+      world.vessels.add(
+        target(type: VesselClass.patrolBoat, range: 800, speed: 0),
+      );
+      advance(world, _config.depthChargeInterval.max * 2 + 2);
+      final wear = world.periscope.damage;
+      expect(wear, greaterThan(0));
+
+      world.vessels.clear();
+      advance(world, 60);
+      expect(world.periscope.damage, wear);
+
+      world.reset();
+      expect(world.periscope.damage, 0);
+      expect(world.hullHits, 0);
     });
 
     test('the end of the patrol is announced', () {

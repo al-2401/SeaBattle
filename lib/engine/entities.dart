@@ -12,6 +12,7 @@ enum VesselClass {
     speedFactor: 1.45,
     points: 200,
     weight: 1.1,
+    hunts: true,
   ),
   submarine(
     label: 'ПОДЛОДКА',
@@ -30,6 +31,7 @@ enum VesselClass {
     speedFactor: 1.2,
     points: 120,
     weight: 1.6,
+    hunts: true,
   ),
   cruiser(
     label: 'КРЕЙСЕР',
@@ -67,6 +69,7 @@ enum VesselClass {
     required this.speedFactor,
     required this.points,
     required this.weight,
+    this.hunts = false,
   });
 
   /// Russian name, shown when the target is hit.
@@ -89,6 +92,10 @@ enum VesselClass {
 
   /// Relative spawn frequency.
   final double weight;
+
+  /// Whether this class hunts submarines. Escorts work the boat over with
+  /// depth charges once they are close enough; merchants never do.
+  final bool hunts;
 }
 
 /// A surface target crossing the searched arc.
@@ -112,6 +119,14 @@ class Vessel {
 
   /// Stable per-ship randomness for the silhouette (funnels, masts).
   final int silhouetteSeed;
+
+  /// Seconds until this escort drops its next pattern of depth charges.
+  /// Only counts down while it is close enough to be a threat.
+  double attackTimer = 0;
+
+  /// Whether this ship has already run over the boat: the hull is overhead
+  /// for several ticks running, but it only costs the gear once.
+  bool hasRammed = false;
 
   /// 0 while afloat, grows to 1 once hit and settling under.
   double sinking = 0;

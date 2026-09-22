@@ -1,13 +1,15 @@
 import 'dart:math' as math;
 
 import 'game_config.dart';
+import 'geometry.dart';
 
 /// The training gear of the periscope.
 ///
 /// The handle does not set the bearing directly: it feeds a torque into a
-/// heavy, damped rotor. Let go and the optics keep drifting; slam into the
-/// training stops and they bounce back a little. That lag is what makes
-/// leading a target feel like work.
+/// damped rotor. Fresh out of the yard the gear answers almost at once; every
+/// knock the boat takes bends it further, until it is the heavy drive that
+/// keeps coasting after you let go and makes leading a target real work.
+/// Slam into the training stops and the optics bounce back a little.
 class Periscope {
   Periscope({this.config = const GameConfig()});
 
@@ -28,6 +30,26 @@ class Periscope {
   /// reads this to decide how hard the clunk should sound, then clears it.
   double stopImpact = 0;
 
+  /// Wear of the training gear, 0 (straight out of the yard) .. 1 (the drive
+  /// is bent and swings like a pendulum). Only damage to the boat moves it.
+  double damage = 0;
+
+  /// Acceleration and damping the gear is actually running with.
+  double get acceleration => lerpDouble(
+    config.angularAcceleration,
+    config.wreckedAngularAcceleration,
+    damage,
+  );
+
+  double get drag =>
+      lerpDouble(config.angularDrag, config.wreckedAngularDrag, damage);
+
+  /// Takes a knock: the gear gets heavier and stays that way.
+  void wear(double amount) {
+    if (amount <= 0 || amount.isNaN) return;
+    damage = (damage + amount).clamp(0.0, 1.0);
+  }
+
   /// Handle deflection, -1 (port) .. +1 (starboard).
   double get control => _control;
 
@@ -47,8 +69,8 @@ class Periscope {
 
   void update(double dt) {
     if (dt <= 0) return;
-    final torque = _control * config.angularAcceleration;
-    angularVelocity += (torque - config.angularDrag * angularVelocity) * dt;
+    final torque = _control * acceleration;
+    angularVelocity += (torque - drag * angularVelocity) * dt;
     angularVelocity = angularVelocity.clamp(
       -config.maxAngularSpeed,
       config.maxAngularSpeed,
@@ -76,5 +98,6 @@ class Periscope {
     _control = 0;
     _stopContact = 0;
     stopImpact = 0;
+    damage = 0;
   }
 }

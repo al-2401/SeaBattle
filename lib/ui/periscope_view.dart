@@ -83,13 +83,17 @@ class _PeriscopePainter extends CustomPainter {
       Path()..addOval(Rect.fromCircle(center: localCenter, radius: radius)),
     );
 
-    // The sea rolls with the swell; the graticule does not.
+    // The sea rolls with the swell; the graticule does not. A blow on the
+    // hull throws the whole picture about on top of that, and dies away.
+    final shock = world.shock;
     canvas.save();
     canvas.translate(localCenter.dx, localCenter.dy);
-    canvas.rotate(world.swellRoll);
+    canvas.rotate(world.swellRoll + math.sin(time * 37) * 0.055 * shock);
     canvas.translate(
-      -localCenter.dx,
-      -localCenter.dy + world.swellHeave * diameter,
+      -localCenter.dx + math.sin(time * 61) * diameter * 0.018 * shock,
+      -localCenter.dy +
+          world.swellHeave * diameter +
+          math.cos(time * 47) * diameter * 0.018 * shock,
     );
 
     final scene = rect.inflate(radius * 0.25);

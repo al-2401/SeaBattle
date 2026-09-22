@@ -252,12 +252,16 @@ class _GamePageState extends State<GamePage>
             left: BorderSide(color: Color(0xFF1E262A), width: 2),
           ),
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: _TitlePlate(world: _world, alignEnd: false)),
-                _SoundLamp(on: _audio.enabled, onTap: _toggleSound),
-              ],
+            _TitlePlate(world: _world, alignEnd: false),
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: GearDamageLamp(damage: _world.periscope.damage),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _SoundLamp(on: _audio.enabled, onTap: _toggleSound),
             ),
             const Spacer(),
             TorpedoRack(
@@ -432,6 +436,10 @@ class _StatusBar extends StatelessWidget {
                 ),
               ],
               const Spacer(),
+              if (constraints.maxWidth > 360) ...[
+                GearDamageLamp(damage: world.periscope.damage),
+                const SizedBox(width: 12),
+              ],
               _SoundLamp(on: soundOn, onTap: onToggleSound),
               const SizedBox(width: 12),
               Flexible(child: _TitlePlate(world: world)),
@@ -604,15 +612,17 @@ class _PhaseOverlay extends StatelessWidget {
                 'ТОЧНОСТЬ',
                 '${(world.accuracy * 100).round()}%',
               ),
+              _statLine('ПОПАДАНИЙ В ЛОДКУ', '${world.hullHits}'),
               _statLine('РЕКОРД', '${world.bestScore}'),
             ] else
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Text(
-                  'Наводи перископ штурвалом или стрелками. '
-                  'Оптика тяжёлая — она продолжает идти по инерции, '
-                  'поэтому упреждение бери заранее. Торпеда идёт долго: '
-                  'стреляй туда, где цель будет, а не туда, где она есть.',
+                  'Наводи перископ штурвалом или стрелками. Торпеда идёт '
+                  'долго: стреляй туда, где цель будет, а не туда, где она '
+                  'есть. Держись от охотников подальше — после их бомб привод '
+                  'наводки ходит по инерции, и упреждение придётся брать '
+                  'заранее. До конца патруля.',
                   textAlign: TextAlign.center,
                   style: kStencil.copyWith(
                     fontSize: 12,

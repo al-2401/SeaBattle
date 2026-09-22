@@ -56,6 +56,12 @@ class SeaBattleWorld {
   double reloadTimer = 0;
   double elapsed = 0;
 
+  /// Times the boat has been hit this patrol.
+  int hullHits = 0;
+
+  /// Fades from 1 to 0 after a blow lands; the view shakes the optics by it.
+  double shock = 0;
+
   double _spawnTimer = 0;
   double _mineTimer = 0;
   double _hornTimer = 0;
@@ -91,6 +97,8 @@ class SeaBattleWorld {
     score = 0;
     shotsFired = 0;
     hits = 0;
+    hullHits = 0;
+    shock = 0;
     elapsed = 0;
     reloadTimer = 0;
     torpedoesRemaining = config.initialTorpedoes;
@@ -129,6 +137,7 @@ class SeaBattleWorld {
     periscope.update(dt);
     if (periscope.stopImpact > 0.12) _cues.add(SoundCue.clunk);
     periscope.stopImpact = 0;
+    shock = math.max(0, shock - dt * 0.8);
     _updateNotices(dt);
     _updateBlasts(dt);
 
@@ -187,11 +196,19 @@ class SeaBattleWorld {
   void _updateTraffic(double dt) {
     for (final vessel in vessels) {
       vessel.update(dt);
+      _workOverTheBoat(vessel, dt);
     }
     vessels.removeWhere((v) => v.isGone || _shouldRetire(v));
 
     for (final mine in mines) {
       mine.update(dt);
+      if (!mine.destroyed && mine.range <= config.hullRadius + config.mineRadius) {
+        mine.destroyed = true;
+        blasts.add(
+          Blast(position: mine.position, kind: BlastKind.mine, duration: 1.3),
+        );
+        _takeHit('МИНА У БОРТА', SoundCue.mine);
+      }
     }
     mines.removeWhere((m) => m.destroyed || m.range > config.maxRange * 1.8);
 
@@ -221,6 +238,67 @@ class SeaBattleWorld {
     }
   }
 
+  /// Everything a ship can do to the boat.
+  ///
+  /// An escort that has come inside its attack range keeps dropping patterns
+  /// of depth charges until it is sunk or drawing away again; the closer it
+  /// is, the more of the pattern lands on the hull. Any ship at all — even a
+  /// merchant — wrecks the gear if its hull passes right over us.
+  void _workOverTheBoat(Vessel vessel, double dt) {
+    if (vessel.isHit) return;
+
+    final overhead =
+        pointSegmentDistance(Vec2.zero, vessel.stern, vessel.bow) <=
+        config.hullRadius;
+    if (overhead) {
+      // Only once per ship: it is over us for several ticks running.
+      if (!vessel.hasRammed) {
+        vessel.hasRammed = true;
+        _takeHit('УДАР ПО КОРПУСУ', SoundCue.hit);
+      }
+      return;
+    }
+
+    if (!vessel.type.hunts || vessel.range > config.depthChargeRange) {
+      vessel.attackTimer = 0;
+      return;
+    }
+
+    if (vessel.attackTimer == 0) {
+      // A first pass takes a moment to line up; after that, pattern on
+      // pattern until it loses us.
+      vessel.attackTimer = _randomBetween(config.depthChargeInterval);
+      return;
+    }
+
+    vessel.attackTimer -= dt;
+    if (vessel.attackTimer > 0) return;
+    vessel.attackTimer = _randomBetween(config.depthChargeInterval) *
+        (1 - 0.35 * difficulty);
+
+    // Near misses shake the boat; only a pattern straight overhead bends
+    // the training gear.
+    final closeness =
+        1 - (vessel.range / config.depthChargeRange).clamp(0.0, 1.0);
+    if (closeness > 0.45 || _random.nextDouble() < closeness) {
+      _takeHit('ГЛУБИННАЯ БОМБА', SoundCue.depthCharge);
+    } else {
+      shock = math.max(shock, 0.45);
+      _notify('БОМБЁЖКА', NoticeKind.mine, 1.2);
+      _cues.add(SoundCue.depthCharge);
+    }
+  }
+
+  /// The boat takes a blow: the training gear is bent a little further, and
+  /// it stays bent for the rest of the patrol.
+  void _takeHit(String text, SoundCue cue) {
+    hullHits++;
+    periscope.wear(config.gearDamagePerHit);
+    shock = 1;
+    _notify(text, NoticeKind.mine, 2.0);
+    _cues.add(cue);
+  }
+
   /// Sounds a merchant's horn if one is close enough and roughly where the
   /// optics are looking. Returns whether anybody was there to sound off.
   bool _soundOffIfAnyoneIsAbout() {
@@ -240,7 +318,7 @@ class SeaBattleWorld {
   /// while it is still drawing away, never on the tick it spawns.
   bool _shouldRetire(Vessel vessel) {
     final opening = vessel.heading.dot(vessel.position.normalized()) > 0;
-    if (opening && vessel.range > config.maxRange * 1.45) return true;
+    if (opening && vessel.range > config.maxRange * 1.15) return true;
     if (vessel.bearing.abs() <= config.spawnBearing + 0.1) return false;
     return vessel.bearing * vessel.bearingRate > 0;
   }
@@ -259,11 +337,11 @@ class SeaBattleWorld {
   }
 
   void _spawnVessel() {
-    final range = lerpDouble(
-      config.minRange,
-      config.maxRange,
-      _random.nextDouble(),
-    );
+    // Weighted towards the near half of the arc: out at the horizon a ship is
+    // a couple of pixels of smoke, and a patrol made only of those is empty
+    // to look at. There is still traffic all the way out there.
+    final draw = math.pow(_random.nextDouble(), 1.6).toDouble();
+    final range = lerpDouble(config.minRange, config.maxRange, draw);
     final bearing = _pickSpawnBearing();
     final side = bearing >= 0 ? 1.0 : -1.0;
     final position = Vec2.fromBearing(bearing, range);
@@ -278,8 +356,11 @@ class SeaBattleWorld {
     // of approach, so it sweeps the whole arc and grows as it comes on.
     // With the closest approach at `cpa` and the target `range` away, the
     // track has to leave the line of sight by asin(cpa / range).
+    // Nothing is allowed to come inside `closestApproach`: closer than that
+    // a ship fills the eyepiece and the periscope scale stops meaning
+    // anything.
     final cpa = (range * lerpDouble(0.35, 0.85, _random.nextDouble())).clamp(
-      700.0,
+      config.closestApproach,
       2600.0,
     );
     final offset = math.asin((cpa / range).clamp(0.15, 0.95));
@@ -313,13 +394,18 @@ class SeaBattleWorld {
   void _spawnMine() {
     final bearing = (_random.nextDouble() * 2 - 1) * config.traverseLimit;
     final range = _randomBetween(config.mineRange);
+    final position = Vec2.fromBearing(bearing, range);
+    // The set drifts down on the boat rather than past it, so a mine left
+    // alone eventually arrives — which is the reason to spend a torpedo on
+    // one instead of steering the sight around it.
+    final towards = position.normalized() * -(3 + _random.nextDouble() * 6);
     mines.add(
       Mine(
         id: _nextId++,
-        position: Vec2.fromBearing(bearing, range),
+        position: position,
         drift: Vec2(
-          (_random.nextDouble() - 0.5) * 9,
-          (_random.nextDouble() - 0.5) * 5,
+          towards.x + (_random.nextDouble() - 0.5) * 4,
+          towards.y + (_random.nextDouble() - 0.5) * 4,
         ),
         bobPhase: _random.nextDouble() * math.pi * 2,
       ),

@@ -12,15 +12,71 @@ void main() {
   }
 
   group('Periscope', () {
-    test('builds up rate gradually instead of snapping to the handle', () {
-      final periscope = Periscope()..control = 1;
-      periscope.update(1 / 60);
-      final afterOneFrame = periscope.angularVelocity;
-      run(periscope, 1.0);
+    test('a sound gear is up to speed almost as fast as the handle moves', () {
+      const config = GameConfig();
+      final periscope = Periscope(config: config)..control = 1;
+      run(periscope, 0.25);
 
-      expect(afterOneFrame, greaterThan(0));
-      expect(afterOneFrame, lessThan(0.05));
-      expect(periscope.angularVelocity, greaterThan(afterOneFrame * 10));
+      // A quarter of a second gets it nearly all the way to full rate.
+      expect(
+        periscope.angularVelocity,
+        greaterThan(config.maxAngularSpeed * 0.85),
+      );
+    });
+
+    test('a wrecked gear takes its time winding up', () {
+      final sound = Periscope()..control = 1;
+      final wrecked = Periscope()
+        ..wear(1)
+        ..control = 1;
+      run(sound, 0.25);
+      run(wrecked, 0.25);
+
+      expect(wrecked.angularVelocity, lessThan(sound.angularVelocity * 0.5));
+    });
+
+    test('damage accumulates and never runs past the wrecked gear', () {
+      final periscope = Periscope();
+      const config = GameConfig();
+
+      periscope.wear(config.gearDamagePerHit);
+      final onceHit = periscope.drag;
+      expect(periscope.damage, closeTo(config.gearDamagePerHit, 1e-9));
+      expect(onceHit, lessThan(config.angularDrag));
+
+      for (var i = 0; i < 20; i++) {
+        periscope.wear(config.gearDamagePerHit);
+      }
+      expect(periscope.damage, 1.0);
+      expect(periscope.drag, closeTo(config.wreckedAngularDrag, 1e-9));
+      expect(
+        periscope.acceleration,
+        closeTo(config.wreckedAngularAcceleration, 1e-9),
+      );
+
+      periscope.reset();
+      expect(periscope.damage, 0);
+    });
+
+    test('a wrecked gear still tops out at the same rate', () {
+      const config = GameConfig();
+      // Start hard over to port so there is a full sweep to wind up in
+      // before the far stop comes round.
+      Periscope trained({required double damage}) {
+        final periscope = Periscope(config: config)
+          ..wear(damage)
+          ..heading = -config.traverseLimit
+          ..control = 1;
+        run(periscope, 2.0, step: 1 / 240);
+        return periscope;
+      }
+
+      final sound = trained(damage: 0);
+      final wrecked = trained(damage: 1);
+
+      // Both are held to maxAngularSpeed; only the time to get there differs.
+      expect(sound.angularVelocity, closeTo(config.maxAngularSpeed, 0.01));
+      expect(wrecked.angularVelocity, closeTo(sound.angularVelocity, 0.02));
     });
 
     test('keeps coasting after the handle is released', () {

@@ -355,6 +355,55 @@ class _FireButtonPainter extends CustomPainter {
       old.reloadProgress != reloadProgress;
 }
 
+/// State of the training gear: one pip per knock the boat has taken, so the
+/// player can see why the optics have started to swing.
+class GearDamageLamp extends StatelessWidget {
+  const GearDamageLamp({super.key, required this.damage, this.steps = 4});
+
+  /// Wear of the gear, 0..1.
+  final double damage;
+  final int steps;
+
+  @override
+  Widget build(BuildContext context) {
+    final lit = (damage * steps).round().clamp(0, steps);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          'ПРИВОД',
+          style: kStencil.copyWith(
+            fontSize: 9,
+            color: (lit == 0 ? Palette.steel : Palette.alarm).withValues(
+              alpha: lit == 0 ? 0.5 : 0.9,
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        for (var i = 0; i < steps; i++) ...[
+          if (i > 0) const SizedBox(width: 3),
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: i < lit ? Palette.alarm : Palette.lampOff,
+              boxShadow: i < lit
+                  ? [
+                      BoxShadow(
+                        color: Palette.alarm.withValues(alpha: 0.6),
+                        blurRadius: 7,
+                      ),
+                    ]
+                  : null,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 /// Torpedoes left, drawn as rounds in the rack.
 class TorpedoRack extends StatelessWidget {
   const TorpedoRack({

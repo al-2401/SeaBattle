@@ -9,23 +9,30 @@ class GameConfig {
   const GameConfig({
     this.fieldOfView = 30 * math.pi / 180,
     this.traverseLimit = 72 * math.pi / 180,
-    this.angularAcceleration = 1.45,
-    this.angularDrag = 1.25,
+    this.angularAcceleration = 7.2,
+    this.angularDrag = 9.0,
+    this.wreckedAngularAcceleration = 1.45,
+    this.wreckedAngularDrag = 1.25,
+    this.gearDamagePerHit = 0.25,
     this.maxAngularSpeed = 0.80,
     this.limitRestitution = 0.22,
     this.eyeHeight = 132.0,
     this.torpedoSpeed = 430.0,
-    this.torpedoRange = 3400.0,
+    this.torpedoRange = 6000.0,
     this.torpedoRadius = 9.0,
     this.torpedoSalvoSize = 2,
     this.reloadTime = 1.9,
     this.initialTorpedoes = 12,
     this.maxTorpedoes = 18,
     this.torpedoesPerHit = 1,
-    this.minRange = 850.0,
-    this.maxRange = 3000.0,
+    this.minRange = 1000.0,
+    this.maxRange = 6000.0,
+    this.closestApproach = 1000.0,
+    this.hullRadius = 60.0,
+    this.depthChargeRange = 1700.0,
+    this.depthChargeInterval = const (min: 5.5, max: 11.0),
     this.spawnInterval = const (min: 3.4, max: 7.0),
-    this.maxVessels = 5,
+    this.maxVessels = 7,
     this.vesselSpeed = const (min: 42.0, max: 88.0),
     this.mineSpawnInterval = const (min: 11.0, max: 22.0),
     this.maxMines = 3,
@@ -43,10 +50,22 @@ class GameConfig {
   final double traverseLimit;
 
   /// Angular acceleration applied at full handle deflection (rad/s^2).
+  ///
+  /// Together with [angularDrag] this is a gear that answers the handle almost
+  /// at once: the two numbers settle at the same top speed as the wrecked gear
+  /// below, but they get there in a tenth of a second instead of a second.
   final double angularAcceleration;
 
   /// Viscous damping of the training gear (1/s). Low values coast for longer.
   final double angularDrag;
+
+  /// What the gear turns into once the boat has taken a beating: the heavy,
+  /// coasting drive the cabinet had, where the lead has to be taken early.
+  final double wreckedAngularAcceleration;
+  final double wreckedAngularDrag;
+
+  /// How much of that wear one hit on the boat adds, 0..1.
+  final double gearDamagePerHit;
 
   final double maxAngularSpeed;
 
@@ -71,8 +90,20 @@ class GameConfig {
   final int maxTorpedoes;
   final int torpedoesPerHit;
 
+  /// Traffic keeps its distance: nothing is drawn closer than this, and
+  /// [maxRange] reaches all the way out to the haze on the horizon.
   final double minRange;
   final double maxRange;
+
+  /// Closest point of approach a ship's track is allowed to have.
+  final double closestApproach;
+
+  /// Radius of the boat itself: anything drifting inside it is touching us.
+  final double hullRadius;
+
+  /// A hunter this close starts working the boat over with depth charges.
+  final double depthChargeRange;
+  final ({double min, double max}) depthChargeInterval;
 
   final ({double min, double max}) spawnInterval;
   final int maxVessels;

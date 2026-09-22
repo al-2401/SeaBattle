@@ -21,6 +21,10 @@ enum SoundCue {
   /// The training gear hitting its stop.
   clunk,
 
+  /// An escort's pattern going off around the boat: heard through the hull,
+  /// so all the crack is gone and only the blow is left.
+  depthCharge,
+
   /// A merchant sounding off somewhere out there.
   horn,
 

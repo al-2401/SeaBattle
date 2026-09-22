@@ -82,6 +82,7 @@ class ArcadeAudio implements GameAudio {
     SoundCue.splash: 0.55,
     SoundCue.reload: 0.50,
     SoundCue.clunk: 0.60,
+    SoundCue.depthCharge: 1.0,
     SoundCue.horn: 0.45,
     SoundCue.gameOver: 0.70,
   };

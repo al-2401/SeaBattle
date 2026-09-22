@@ -26,6 +26,7 @@ class SoundBank {
     'splash' => _splash(),
     'reload' => _reload(),
     'clunk' => _clunk(),
+    'depthCharge' => _depthCharge(),
     'horn' => _horn(),
     'gameOver' => _gameOver(),
     'motor' => _motor(),
@@ -36,7 +37,13 @@ class SoundBank {
 
   /// Sounds with nothing above a few hundred hertz are generated at a lower
   /// rate — a third of the bytes, and not a sample of it audible.
-  static const Set<String> _lowFidelity = {'motor', 'torpedo', 'sea', 'horn'};
+  static const Set<String> _lowFidelity = {
+    'motor',
+    'torpedo',
+    'sea',
+    'horn',
+    'depthCharge',
+  };
 
   int rateFor(String name) => _lowFidelity.contains(name) ? 12000 : sampleRate;
 
@@ -204,6 +211,47 @@ class SoundBank {
       ..mixIn(ring, gain: 0.20)
       ..fadeEdges()
       ..normalize(0.80);
+  }
+
+  /// A pattern of depth charges going off around the boat.
+  ///
+  /// Heard from inside a pressure hull under water: no crack at all, just two
+  /// blows in the belly of the sound and the frames ringing afterwards. The
+  /// noise is low-passed hard, which is what tells the ear this one happened
+  /// to us rather than to something out on the water.
+  Wave _depthCharge() {
+    Wave blow(int seed, double from, double gain) {
+      final press = _blank(2.2, rateFor('depthCharge'))
+        ..addNoise(random: _rng(seed), amplitude: 1, amplitudeEnd: 0.04)
+        ..lowPass(900, cutoffEnd: 90)
+        ..percussive(attack: 0.006, release: 0.46);
+      final thud = _blank(2.2, rateFor('depthCharge'))
+        ..addOscillator(
+          from: from,
+          to: 21,
+          amplitude: 1,
+          amplitudeEnd: 0,
+          frequencyCurve: Curve.easeOut,
+        )
+        ..percussive(attack: 0.014, release: 0.50);
+      return _blank(2.2, rateFor('depthCharge'))
+        ..mixIn(press, gain: 0.6 * gain)
+        ..mixIn(thud, gain: 1.0 * gain);
+    }
+
+    // The hull answers the blow: low frames groaning, not a bell.
+    final frames = _blank(2.2, rateFor('depthCharge'))
+      ..addOscillator(from: 74, amplitude: 0.7, waveform: Waveform.triangle)
+      ..addOscillator(from: 117, to: 109, amplitude: 0.4)
+      ..percussive(attack: 0.02, release: 0.62);
+
+    return _blank(2.2, rateFor('depthCharge'))
+      ..mixIn(blow(97, 88, 1.0))
+      ..mixIn(blow(101, 71, 0.75), at: 0.34)
+      ..mixIn(frames, gain: 0.30)
+      ..lowPass(1400)
+      ..fadeEdges()
+      ..normalize(0.95);
   }
 
   /// A merchant sounding off, well out of sight.
