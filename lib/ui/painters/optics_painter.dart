@@ -112,16 +112,25 @@ void paintReticle(Canvas canvas, Rect rect, Sight sight) {
   }
 }
 
-/// Half the width the capsule still has at height [y].
+/// Half the width the field still has at height [y], found by feeling along
+/// the outline rather than assuming its shape.
 ///
 /// Anything laid out across the field — the bearing tape, the threat strip —
-/// has to stop short of the rounded ends, or it runs out through the glass.
-double fieldHalfWidth(Rect rect, double y) {
-  final radius = rect.height / 2;
-  final dy = (y - rect.center.dy).abs();
-  if (dy >= radius) return 0;
-  final cap = math.sqrt(radius * radius - dy * dy);
-  return rect.width / 2 - radius + cap;
+/// has to stop short of wherever the glass curves away, and that is a
+/// different place for every mask the window can wear.
+double fieldHalfWidth(Rect rect, Path field, double y) {
+  if (!field.contains(Offset(rect.center.dx, y))) return 0;
+  var inside = 0.0;
+  var outside = rect.width / 2;
+  for (var i = 0; i < 12; i++) {
+    final middle = (inside + outside) / 2;
+    if (field.contains(Offset(rect.center.dx + middle, y))) {
+      inside = middle;
+    } else {
+      outside = middle;
+    }
+  }
+  return inside;
 }
 
 /// Bearing tape across the top of the field: absolute bearings, so it slides
@@ -129,14 +138,15 @@ double fieldHalfWidth(Rect rect, double y) {
 void paintBearingTape(
   Canvas canvas,
   Rect rect,
+  Path field,
   Sight sight,
   double traverseLimit,
 ) {
   final tapeY = rect.top + rect.height * 0.16;
   // Labels sit above the tape, so the run is measured where they are.
   final reach = math.min(
-    fieldHalfWidth(rect, tapeY),
-    fieldHalfWidth(rect, tapeY - 17),
+    fieldHalfWidth(rect, field, tapeY),
+    fieldHalfWidth(rect, field, tapeY - 17),
   ) - 10;
   if (reach <= 20) return;
   final left = rect.center.dx - reach;
@@ -201,6 +211,7 @@ void paintBearingTape(
 void paintThreatStrip(
   Canvas canvas,
   Rect rect,
+  Path field,
   Sight sight,
   double traverseLimit,
   double fieldOfView,
@@ -209,7 +220,7 @@ void paintThreatStrip(
   final y = rect.top + rect.height * 0.16 + 34;
   final width = math.min(
     rect.width * 0.54,
-    (fieldHalfWidth(rect, y + 15) - 12) * 2,
+    (fieldHalfWidth(rect, field, y + 15) - 12) * 2,
   );
   if (width <= 40) return;
   final left = rect.center.dx - width / 2;
@@ -297,26 +308,35 @@ void paintThreatStrip(
 }
 
 /// Coated glass: tint, vignette, dirt and a chromatic fringe at the edge.
-void paintGlass(Canvas canvas, RRect glass, double time) {
-  final rect = glass.outerRect;
+///
+/// [glass] is the outline of the field, whatever shape it has been masked to,
+/// [rect] is the box it sits in, and [falloff] is the ellipse the vignette
+/// darkens along — which is not the same thing once the field is cropped.
+void paintGlass(
+  Canvas canvas,
+  Rect rect,
+  Path glass,
+  Rect falloff,
+  double time,
+) {
   final center = rect.center;
   final reach = rect.longestSide / 2;
 
-  canvas.drawRRect(
+  canvas.drawPath(
     glass,
     Paint()..color = Palette.glassTint.withValues(alpha: 0.055),
   );
 
-  // Vignette. Drawn in a squashed space so the falloff follows the capsule
-  // instead of bulging out of its ends.
+  // Vignette. Drawn in a squashed space so the falloff follows the glass
+  // instead of bulging out past it.
   canvas.save();
-  canvas.translate(center.dx, center.dy);
-  canvas.scale(1.0, rect.height / rect.width);
+  canvas.translate(falloff.center.dx, falloff.center.dy);
+  canvas.scale(1.0, falloff.height / falloff.width);
   canvas.drawCircle(
     Offset.zero,
-    rect.width / 2,
+    falloff.width / 2,
     Paint()
-      ..shader = ui.Gradient.radial(Offset.zero, rect.width / 2, [
+      ..shader = ui.Gradient.radial(Offset.zero, falloff.width / 2, [
         const Color(0x00000000),
         Colors.black.withValues(alpha: 0.16),
         Colors.black.withValues(alpha: 0.80),
@@ -368,15 +388,15 @@ void paintGlass(Canvas canvas, RRect glass, double time) {
   }
 
   // Chromatic fringe around the rim of the field.
-  canvas.drawRRect(
-    glass.deflate(1.5),
+  canvas.drawPath(
+    scalePath(glass, rect, -1.5),
     Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
       ..color = const Color(0xFF4FC3F7).withValues(alpha: 0.10),
   );
-  canvas.drawRRect(
-    glass.deflate(3.5),
+  canvas.drawPath(
+    scalePath(glass, rect, -3.5),
     Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
@@ -385,10 +405,22 @@ void paintGlass(Canvas canvas, RRect glass, double time) {
 
   // Faint breathing of the illumination.
   final pulse = 0.012 + 0.008 * math.sin(time * 1.3);
-  canvas.drawRRect(
+  canvas.drawPath(
     glass,
     Paint()..color = Palette.glassTint.withValues(alpha: pulse),
   );
+}
+
+/// [path] grown by [outset] pixels all round, by scaling it about the centre
+/// of [rect]. Good enough for the rings of a housing, which are all convex.
+Path scalePath(Path path, Rect rect, double outset) {
+  final sx = (rect.width + outset * 2) / rect.width;
+  final sy = (rect.height + outset * 2) / rect.height;
+  final matrix = Matrix4.identity()
+    ..translateByDouble(rect.center.dx, rect.center.dy, 0, 1)
+    ..scaleByDouble(sx, sy, 1, 1)
+    ..translateByDouble(-rect.center.dx, -rect.center.dy, 0, 1);
+  return path.transform(matrix.storage);
 }
 
 /// The eyepiece housing around the optic: cast collar, rubber eyecup, the
@@ -396,29 +428,24 @@ void paintGlass(Canvas canvas, RRect glass, double time) {
 void paintBezel(
   Canvas canvas,
   Size size,
-  RRect window, {
+  Rect rect,
+  Path window, {
   required double stopContact,
   required double trainFraction,
 }) {
-  final rect = window.outerRect;
-
   // Everything outside the glass is cabinet.
   canvas.drawPath(
-    Path()
-      ..fillType = PathFillType.evenOdd
-      ..addRect(Offset.zero & size)
-      ..addRRect(window),
+    Path.combine(
+      PathOperation.difference,
+      Path()..addRect(Offset.zero & size),
+      window,
+    ),
     Paint()..color = Palette.bezel,
   );
 
-  RRect ring(double outset) => RRect.fromRectAndRadius(
-    rect.inflate(outset),
-    Radius.circular(rect.height / 2 + outset),
-  );
-
   // Rubber eyecup: thick, and darker at the bottom where the light dies.
-  canvas.drawRRect(
-    ring(9),
+  canvas.drawPath(
+    scalePath(window, rect, 9),
     Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 18
@@ -430,8 +457,8 @@ void paintBezel(
       ),
   );
   // Cast collar outside it, with a lit top edge.
-  canvas.drawRRect(
-    ring(20),
+  canvas.drawPath(
+    scalePath(window, rect, 20),
     Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 6
@@ -442,24 +469,23 @@ void paintBezel(
         const [0.0, 1.0],
       ),
   );
-  canvas.drawRRect(
-    ring(1),
+  canvas.drawPath(
+    scalePath(window, rect, 1),
     Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
       ..color = Palette.steel.withValues(alpha: 0.25),
   );
 
-  // Retaining screws, walked around the capsule at a fixed spacing rather
+  // Retaining screws, walked around the housing at a fixed spacing rather
   // than at fixed angles — on a long window a dozen evenly spread screws
   // would bunch up at the ends and leave the straight runs bare.
-  final screwPath = Path()..addRRect(ring(18));
   final screw = Paint()..color = Palette.steel.withValues(alpha: 0.35);
   final rim = Paint()
     ..style = PaintingStyle.stroke
     ..strokeWidth = 0.7
     ..color = Colors.black.withValues(alpha: 0.6);
-  for (final metric in screwPath.computeMetrics()) {
+  for (final metric in scalePath(window, rect, 18).computeMetrics()) {
     final count = math.max(10, (metric.length / 52).round());
     for (var i = 0; i < count; i++) {
       final at = metric.getTangentForOffset(metric.length * i / count)?.position;

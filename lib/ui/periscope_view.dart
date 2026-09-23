@@ -9,33 +9,121 @@ import 'painters/optics_painter.dart';
 import 'painters/sea_painter.dart';
 import 'painters/vessel_painter.dart';
 
-/// The window the sea is seen through.
+/// Shapes the field of view can be masked to.
 ///
-/// Not the round hole a real periscope gives you: a wide capsule, because a
-/// phone on its side is a letterbox and a circle throws away two thirds of
-/// it. The optics still show the same 30° of arc — the slice is simply drawn
-/// bigger, which is what makes a flag at two kilometres readable at all. In a
-/// tall window the capsule collapses back to the circle it came from.
-RRect eyepieceWindow(Size size) {
+/// A real periscope gives a circle and nothing else — the field is round
+/// because the optics are. Everything else here is a liberty taken for a
+/// phone held on its side, where a circle throws away most of the screen.
+enum EyepieceShape {
+  /// A circle with the sides pulled apart: straight top and bottom, round
+  /// ends. Reads as optics stretched to fit the panel.
+  capsule,
+
+  /// A plain ellipse. Softer, less mechanical — no straight runs anywhere.
+  ellipse,
+
+  /// A circle cropped top and bottom, like a viewing slit: the round edge is
+  /// kept at the sides, where the eye looks for it, and the sky and the
+  /// foreground swell are cut away.
+  letterbox,
+
+  /// A rounded window with real corners — an instrument panel rather than an
+  /// eyepiece, but it uses every pixel it is given.
+  panel,
+
+  /// Two overlapping circles, the way binoculars are drawn. Wide, and still
+  /// unmistakably an optic.
+  binocular,
+}
+
+/// The mask the field of view wears. One constant, because the whole cabinet
+/// is built around it — change it here and the housing, the tape and the
+/// touch handling all follow.
+const EyepieceShape kEyepieceShape = EyepieceShape.letterbox;
+
+/// The box the field of view is fitted into.
+///
+/// Narrower than the space it is given: the optics are the instrument, not
+/// the whole cabinet, and the rest is the housing around it. The vertical
+/// margin is the wider one — that is where the collar and the eyecup go, and
+/// on a cropped circle they sit along a straight edge where there is nowhere
+/// to hide them.
+Rect eyepieceBox(Size size) {
   const margin = 12.0;
+  const collar = 30.0;
   final available = Size(
-    math.max(48.0, size.width - margin * 2),
-    math.max(40.0, size.height - margin * 2),
+    math.max(48.0, (size.width - margin * 2) * 0.85),
+    math.max(40.0, size.height - collar * 2),
   );
   // Never wider than three of its own heights, never taller than it is wide.
   final width = math.min(available.width, available.height * 3.0);
   final height = math.min(available.height, width);
-  final rect = Rect.fromCenter(
+  return Rect.fromCenter(
     center: size.center(Offset.zero),
     width: width,
     height: height,
   );
-  return RRect.fromRectAndRadius(rect, Radius.circular(height / 2));
+}
+
+/// The outline of the field of view inside [rect].
+Path eyepieceOutline(Rect rect, EyepieceShape shape) {
+  switch (shape) {
+    case EyepieceShape.capsule:
+      return Path()
+        ..addRRect(
+          RRect.fromRectAndRadius(rect, Radius.circular(rect.height / 2)),
+        );
+    case EyepieceShape.ellipse:
+      return Path()..addOval(rect);
+    case EyepieceShape.letterbox:
+      // A circle as wide as the window, with the top and bottom cut off by
+      // the window's own height.
+      final radius = rect.width / 2;
+      return Path.combine(
+        PathOperation.intersect,
+        Path()..addOval(Rect.fromCircle(center: rect.center, radius: radius)),
+        Path()..addRect(rect),
+      );
+    case EyepieceShape.panel:
+      return Path()
+        ..addRRect(
+          RRect.fromRectAndRadius(
+            rect,
+            Radius.circular(rect.height * 0.26),
+          ),
+        );
+    case EyepieceShape.binocular:
+      final radius = rect.height / 2;
+      final reach = math.max(0.0, rect.width / 2 - radius);
+      final left = Rect.fromCircle(
+        center: rect.center.translate(-reach, 0),
+        radius: radius,
+      );
+      final right = Rect.fromCircle(
+        center: rect.center.translate(reach, 0),
+        radius: radius,
+      );
+      return Path.combine(
+        PathOperation.union,
+        Path()..addOval(left),
+        Path()..addOval(right),
+      );
+  }
 }
 
 /// Whether [position] (local to a box of [size]) falls on the glass.
-bool onEyepiece(Size size, Offset position) =>
-    (Path()..addRRect(eyepieceWindow(size))).contains(position);
+bool onEyepiece(
+  Size size,
+  Offset position, [
+  EyepieceShape shape = kEyepieceShape,
+]) => eyepieceOutline(eyepieceBox(size), shape).contains(position);
+
+/// The ellipse the vignette falls off along: for a cropped circle it stays
+/// round, for the stretched shapes it follows the window.
+Rect eyepieceFalloff(Rect rect, EyepieceShape shape) =>
+    shape == EyepieceShape.letterbox
+    ? Rect.fromCircle(center: rect.center, radius: rect.width / 2)
+    : rect;
 
 /// Everything you see through the eyepiece.
 class PeriscopeView extends StatelessWidget {
@@ -44,16 +132,23 @@ class PeriscopeView extends StatelessWidget {
     required this.world,
     required this.surface,
     required this.time,
+    this.shape = kEyepieceShape,
   });
 
   final SeaBattleWorld world;
   final SeaSurface surface;
   final double time;
+  final EyepieceShape shape;
 
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: _PeriscopePainter(world: world, surface: surface, time: time),
+      painter: _PeriscopePainter(
+        world: world,
+        surface: surface,
+        time: time,
+        shape: shape,
+      ),
       size: Size.infinite,
       isComplex: true,
       willChange: true,
@@ -66,19 +161,20 @@ class _PeriscopePainter extends CustomPainter {
     required this.world,
     required this.surface,
     required this.time,
+    required this.shape,
   });
 
   final SeaBattleWorld world;
   final SeaSurface surface;
   final double time;
+  final EyepieceShape shape;
 
   /// Crests closer than this are drawn over the ships as foreground swell.
   static const double _foregroundSwell = 900;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final window = eyepieceWindow(size);
-    final outer = window.outerRect;
+    final outer = eyepieceBox(size);
     if (outer.width <= 40 || outer.height <= 32) return;
 
     // Work in the window's own coordinates: everything the optics show is
@@ -88,10 +184,7 @@ class _PeriscopePainter extends CustomPainter {
 
     final rect = Rect.fromLTWH(0, 0, outer.width, outer.height);
     final localCenter = rect.center;
-    final glass = RRect.fromRectAndRadius(
-      rect,
-      Radius.circular(rect.height / 2),
-    );
+    final glass = eyepieceOutline(rect, shape);
     final sight = Sight(
       width: rect.width,
       height: rect.height,
@@ -102,7 +195,7 @@ class _PeriscopePainter extends CustomPainter {
     );
 
     canvas.save();
-    canvas.clipPath(Path()..addRRect(glass));
+    canvas.clipPath(glass);
 
     // The sea rolls with the swell; the graticule does not. A blow on the
     // hull throws the whole picture about on top of that, and dies away.
@@ -154,10 +247,11 @@ class _PeriscopePainter extends CustomPainter {
     paintWaves(canvas, scene, sight, surface, time, rangeTo: _foregroundSwell);
     canvas.restore();
 
-    paintBearingTape(canvas, rect, sight, world.config.traverseLimit);
+    paintBearingTape(canvas, rect, glass, sight, world.config.traverseLimit);
     paintThreatStrip(
       canvas,
       rect,
+      glass,
       sight,
       world.config.traverseLimit,
       world.config.fieldOfView,
@@ -165,7 +259,7 @@ class _PeriscopePainter extends CustomPainter {
     );
     paintReticle(canvas, rect, sight);
     paintNotices(canvas, rect, sight, world.notices);
-    paintGlass(canvas, glass, time);
+    paintGlass(canvas, rect, glass, eyepieceFalloff(rect, shape), time);
 
     canvas.restore(); // window clip
     canvas.restore(); // window origin
@@ -173,7 +267,8 @@ class _PeriscopePainter extends CustomPainter {
     paintBezel(
       canvas,
       size,
-      window,
+      outer,
+      eyepieceOutline(outer, shape),
       stopContact: world.periscope.stopContact,
       trainFraction: world.periscope.trainFraction,
     );
