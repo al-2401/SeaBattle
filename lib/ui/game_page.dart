@@ -7,16 +7,20 @@ import 'package:flutter/services.dart';
 import '../audio/game_audio.dart';
 import '../engine/world.dart';
 import 'control_panel.dart';
+import 'painters/cabinet_painter.dart';
 import 'painters/sea_painter.dart';
 import 'palette.dart';
 import 'strings.dart';
 import 'periscope_view.dart';
 
 class GamePage extends StatefulWidget {
-  const GamePage({super.key, this.audio});
+  const GamePage({super.key, this.audio, this.decor = CabinetDecor.instruments});
 
   /// Sound engine; null means build the real one.
   final GameAudio? audio;
+
+  /// How much of the boat is drawn behind the instruments.
+  final CabinetDecor decor;
 
   @override
   State<GamePage> createState() => _GamePageState();
@@ -147,14 +151,8 @@ class _GamePageState extends State<GamePage>
       focusNode: _focusNode,
       autofocus: true,
       onKeyEvent: _onKey,
-      child: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF10161A), Color(0xFF05080A)],
-          ),
-        ),
+      child: CustomPaint(
+        painter: _CabinetBackdrop(decor: widget.decor, time: _time),
         child: SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) =>
@@ -303,6 +301,22 @@ class _GamePageState extends State<GamePage>
       : _world.reloadTimer / _world.config.reloadTime;
 }
 
+/// The compartment the whole cabinet is bolted into: plating, rivets, pipe
+/// runs and the odd instrument. Painted once, behind everything.
+class _CabinetBackdrop extends CustomPainter {
+  const _CabinetBackdrop({required this.decor, required this.time});
+
+  final CabinetDecor decor;
+  final double time;
+
+  @override
+  void paint(Canvas canvas, Size size) =>
+      paintCabinet(canvas, size, decor, time);
+
+  @override
+  bool shouldRepaint(covariant _CabinetBackdrop old) => old.decor != decor;
+}
+
 /// One wing of the cabinet front in the landscape layout.
 class _SidePanel extends StatelessWidget {
   const _SidePanel({
@@ -320,7 +334,12 @@ class _SidePanel extends StatelessWidget {
     return Container(
       width: width,
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(color: const Color(0xFF0C1013), border: border),
+      // Only a scrim: the plating, the pipes and the brass behind have to
+      // stay visible, or the compartment might as well not be there.
+      decoration: BoxDecoration(
+        color: const Color(0xFF0C1013).withValues(alpha: 0.55),
+        border: border,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: children,

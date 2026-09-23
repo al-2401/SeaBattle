@@ -433,14 +433,15 @@ void paintBezel(
   required double stopContact,
   required double trainFraction,
 }) {
-  // Everything outside the glass is cabinet.
+  // Outside the glass is the compartment, painted underneath — so this is
+  // only the shadow the housing throws on it, not a lid over it.
   canvas.drawPath(
     Path.combine(
       PathOperation.difference,
       Path()..addRect(Offset.zero & size),
       window,
     ),
-    Paint()..color = Palette.bezel,
+    Paint()..color = Palette.bezel.withValues(alpha: 0.55),
   );
 
   // Rubber eyecup: thick, and darker at the bottom where the light dies.
