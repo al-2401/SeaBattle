@@ -39,7 +39,7 @@ enum EyepieceShape {
 /// The mask the field of view wears. One constant, because the whole cabinet
 /// is built around it — change it here and the housing, the tape and the
 /// touch handling all follow.
-const EyepieceShape kEyepieceShape = EyepieceShape.letterbox;
+const EyepieceShape kEyepieceShape = EyepieceShape.binocular;
 
 /// The box the field of view is fitted into.
 ///
@@ -93,20 +93,38 @@ Path eyepieceOutline(Rect rect, EyepieceShape shape) {
           ),
         );
     case EyepieceShape.binocular:
-      final radius = rect.height / 2;
+      // Two barrels, deliberately overlapped far more than they need to be.
+      // Drawn tangent to the height they would have, the circles leave a
+      // notch right in the middle of the field — exactly where the target
+      // is. Oversizing them and cropping to the box pushes that notch out to
+      // a shallow dip at the top and bottom, which is how every convincing
+      // binocular mask is drawn.
+      // Just over half the height: the barrels are cropped flat at the top
+      // and bottom, and the dip between them stays a tenth of the field —
+      // enough to read as two barrels, too little to sit on the target.
+      final radius = math.min(rect.height * 0.52, rect.width / 2);
       final reach = math.max(0.0, rect.width / 2 - radius);
-      final left = Rect.fromCircle(
-        center: rect.center.translate(-reach, 0),
-        radius: radius,
-      );
-      final right = Rect.fromCircle(
-        center: rect.center.translate(reach, 0),
-        radius: radius,
+      final barrels = Path.combine(
+        PathOperation.union,
+        Path()
+          ..addOval(
+            Rect.fromCircle(
+              center: rect.center.translate(-reach, 0),
+              radius: radius,
+            ),
+          ),
+        Path()
+          ..addOval(
+            Rect.fromCircle(
+              center: rect.center.translate(reach, 0),
+              radius: radius,
+            ),
+          ),
       );
       return Path.combine(
-        PathOperation.union,
-        Path()..addOval(left),
-        Path()..addOval(right),
+        PathOperation.intersect,
+        barrels,
+        Path()..addRect(rect),
       );
   }
 }
@@ -120,10 +138,16 @@ bool onEyepiece(
 
 /// The ellipse the vignette falls off along: for a cropped circle it stays
 /// round, for the stretched shapes it follows the window.
-Rect eyepieceFalloff(Rect rect, EyepieceShape shape) =>
-    shape == EyepieceShape.letterbox
-    ? Rect.fromCircle(center: rect.center, radius: rect.width / 2)
-    : rect;
+Rect eyepieceFalloff(Rect rect, EyepieceShape shape) => switch (shape) {
+  EyepieceShape.letterbox => Rect.fromCircle(
+    center: rect.center,
+    radius: rect.width / 2,
+  ),
+  // Binoculars darken towards each barrel, but one soft pool across the
+  // pair reads better than two competing ones.
+  EyepieceShape.binocular => rect.inflate(rect.height * 0.12),
+  _ => rect,
+};
 
 /// Everything you see through the eyepiece.
 class PeriscopeView extends StatelessWidget {

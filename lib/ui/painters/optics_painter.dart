@@ -403,6 +403,18 @@ void paintGlass(
       ..color = const Color(0xFFFF7043).withValues(alpha: 0.07),
   );
 
+  // The edge of the field is rubber and shadow, not a cut: a blurred band
+  // laid just inside the outline, so the picture dies into the housing
+  // instead of ending at a line.
+  canvas.drawPath(
+    scalePath(glass, rect, -6),
+    Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 16
+      ..color = Colors.black.withValues(alpha: 0.55)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 9),
+  );
+
   // Faint breathing of the illumination.
   final pulse = 0.012 + 0.008 * math.sin(time * 1.3);
   canvas.drawPath(
