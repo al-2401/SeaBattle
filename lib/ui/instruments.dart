@@ -305,16 +305,34 @@ class RadarScope extends StatelessWidget {
   final bool alarm;
   final double time;
 
-  /// The sound switch rides on the radar's side tab: it needs a home, and
-  /// the top-right corner is deliberately left empty for now.
+  /// The sound switch rides on the radar's side tab, under the alarm lamp:
+  /// a speaker glyph rather than a word, so the tab stays small.
   final Widget? soundLamp;
 
   @override
   Widget build(BuildContext context) {
+    // The alarm tab stands on the outside, so the scope itself sits next to
+    // the optic where the eye already is.
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
+        InstrumentPlate(
+          padding: const EdgeInsets.fromLTRB(7, 10, 7, 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(Ru.alarm, style: _plateLabel(6.5)),
+              const SizedBox(height: 4),
+              PanelLamp(on: alarm, color: Palette.alarm, size: 13),
+              if (soundLamp != null) ...[
+                const SizedBox(height: 8),
+                soundLamp!,
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(width: 3),
         SizedBox(
           width: size,
           height: size,
@@ -330,22 +348,6 @@ class RadarScope extends StatelessWidget {
                 sweep: radarSweepAt(time),
               ),
             ),
-          ),
-        ),
-        const SizedBox(width: 3),
-        InstrumentPlate(
-          padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(Ru.alarm, style: _plateLabel(7.5)),
-              const SizedBox(height: 5),
-              PanelLamp(on: alarm, color: Palette.alarm, size: 16),
-              if (soundLamp != null) ...[
-                const SizedBox(height: 12),
-                soundLamp!,
-              ],
-            ],
           ),
         ),
       ],
@@ -819,16 +821,42 @@ class _SilhouettePainter extends CustomPainter {
 
 // ------------------------------------------------------------- weapon drum
 
-/// Weapon selection, right side.
+/// What sits in one position of the weapon drum.
 ///
-/// A drum shows the weapon before, the one selected and the one after, so it
-/// works the same for three weapons or seven. Only the torpedo exists for
-/// now; the neighbouring slots are left blank rather than filled with
-/// weapons that do not exist yet.
+/// Only the torpedo exists. The other positions are left empty on purpose:
+/// the drum and its wheel work, but no weapon is invented to fill them.
+enum WeaponSlot { torpedo, empty }
+
+/// The drum's positions, in the order the wheel brings them round.
+const List<WeaponSlot> kWeaponSlots = [
+  WeaponSlot.torpedo,
+  WeaponSlot.empty,
+  WeaponSlot.empty,
+];
+
+/// The slot a drum [position] has settled on (positions wrap round).
+WeaponSlot weaponSlotAt(double position, [List<WeaponSlot> slots = kWeaponSlots]) {
+  final index = position.round() % slots.length;
+  return slots[index < 0 ? index + slots.length : index];
+}
+
+/// Weapon selection, top right.
+///
+/// A drum shows the position before, the one selected and the one after, so
+/// it works the same for three weapons or seven. [position] is fractional
+/// while the wheel is being turned — the drum rolls with it, then settles.
 class WeaponDrum extends StatelessWidget {
-  const WeaponDrum({super.key, required this.remaining, this.width = 176});
+  const WeaponDrum({
+    super.key,
+    required this.remaining,
+    this.position = 0,
+    this.slots = kWeaponSlots,
+    this.width = 176,
+  });
 
   final int remaining;
+  final double position;
+  final List<WeaponSlot> slots;
   final double width;
 
   @override
@@ -842,7 +870,9 @@ class WeaponDrum extends StatelessWidget {
           children: [
             SizedBox(
               height: width * 0.62,
-              child: const CustomPaint(painter: _DrumPainter()),
+              child: CustomPaint(
+                painter: _DrumPainter(position: position, slots: slots),
+              ),
             ),
             const SizedBox(height: 8),
             Row(
@@ -865,37 +895,73 @@ class WeaponDrum extends StatelessWidget {
 }
 
 class _DrumPainter extends CustomPainter {
-  const _DrumPainter();
+  const _DrumPainter({required this.position, required this.slots});
+
+  final double position;
+  final List<WeaponSlot> slots;
 
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
     final band = size.height / 3;
+    final window = Rect.fromLTWH(3, band, size.width - 6, band);
 
-    // The drum body: a cylinder, darker towards the top and bottom where it
-    // turns away from the eye.
     canvas.drawRRect(
       RRect.fromRectAndRadius(rect, const Radius.circular(5)),
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFF101310),
-            Palette.enamel,
-            Palette.enamel,
-            Color(0xFF101310),
-          ],
-          stops: [0.0, 0.3, 0.7, 1.0],
-        ).createShader(rect),
+      Paint()..color = Palette.enamel,
     );
-
-    // Selected slot: a lit window in the middle band.
-    final window = Rect.fromLTWH(3, band, size.width - 6, band);
     canvas.drawRRect(
       RRect.fromRectAndRadius(window, const Radius.circular(3)),
       Paint()..color = const Color(0xFF1A120A),
     );
+
+    canvas.save();
+    canvas.clipRRect(RRect.fromRectAndRadius(rect, const Radius.circular(5)));
+    final seam = Paint()
+      ..strokeWidth = 1
+      ..color = Colors.black.withValues(alpha: 0.55);
+    final nearest = position.round();
+    for (var k = -2; k <= 2; k++) {
+      final index = nearest + k;
+      final centerY = size.height / 2 + (index - position) * band;
+      // Seam between this position and the next one down.
+      final seamY = centerY + band / 2;
+      canvas.drawLine(Offset(8, seamY), Offset(size.width - 8, seamY), seam);
+      final slot = weaponSlotAt(index.toDouble(), slots);
+      if (slot == WeaponSlot.empty) continue;
+      // How much of this position is in the lit window.
+      final inWindow = (1 - ((centerY - size.height / 2).abs() / band))
+          .clamp(0.0, 1.0);
+      _paintTorpedoSlot(
+        canvas,
+        Rect.fromCenter(
+          center: Offset(size.width / 2, centerY),
+          width: window.width,
+          height: band,
+        ),
+        0.35 + 0.65 * inWindow,
+      );
+    }
+
+    // The drum is a cylinder: the top and bottom turn away into shadow.
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.black.withValues(alpha: 0.75),
+            Colors.black.withValues(alpha: 0.0),
+            Colors.black.withValues(alpha: 0.0),
+            Colors.black.withValues(alpha: 0.75),
+          ],
+          stops: const [0.0, 0.3, 0.7, 1.0],
+        ).createShader(rect),
+    );
+    canvas.restore();
+
+    // The glow of the selection window, over everything.
     for (final y in [window.top, window.bottom]) {
       canvas.drawLine(
         Offset(window.left, y),
@@ -906,23 +972,25 @@ class _DrumPainter extends CustomPainter {
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5),
       );
     }
+  }
 
-    // Torpedo glyph and its name, painted rather than set as text so the
-    // drum reads as a stencil on the slot and not as a label beside it.
+  void _paintTorpedoSlot(Canvas canvas, Rect slot, double brightness) {
+    final colour = Palette.cream.withValues(alpha: brightness);
     _paintTorpedo(
       canvas,
       Rect.fromCenter(
-        center: window.center.translate(0, -window.height * 0.16),
-        width: window.width * 0.62,
-        height: window.height * 0.3,
+        center: slot.center.translate(0, -slot.height * 0.16),
+        width: slot.width * 0.62,
+        height: slot.height * 0.3,
       ),
+      colour,
     );
     final painter = TextPainter(
       text: TextSpan(
         text: Ru.fire,
         style: kStencil.copyWith(
-          fontSize: window.height * 0.24,
-          color: Palette.cream,
+          fontSize: slot.height * 0.24,
+          color: colour,
           letterSpacing: 2,
         ),
       ),
@@ -931,22 +999,14 @@ class _DrumPainter extends CustomPainter {
     painter.paint(
       canvas,
       Offset(
-        window.center.dx - painter.width / 2,
-        window.bottom - painter.height - window.height * 0.08,
+        slot.center.dx - painter.width / 2,
+        slot.bottom - painter.height - slot.height * 0.08,
       ),
     );
-
-    // Empty neighbours: just the slot seams.
-    final seam = Paint()
-      ..strokeWidth = 1
-      ..color = Colors.black.withValues(alpha: 0.5);
-    for (final y in [band * 0.5, band * 2.5]) {
-      canvas.drawLine(Offset(12, y), Offset(size.width - 12, y), seam);
-    }
   }
 
-  void _paintTorpedo(Canvas canvas, Rect box) {
-    final paint = Paint()..color = Palette.cream;
+  void _paintTorpedo(Canvas canvas, Rect box, Color colour) {
+    final paint = Paint()..color = colour;
     final body = Rect.fromLTRB(
       box.left + box.width * 0.12,
       box.top + box.height * 0.2,
@@ -963,7 +1023,6 @@ class _DrumPainter extends CustomPainter {
       ),
       paint,
     );
-    // Tail fins and screw.
     canvas.drawRect(
       Rect.fromLTRB(box.left + box.width * 0.04, box.top, body.left + 2, box.bottom),
       paint,
@@ -975,7 +1034,148 @@ class _DrumPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _DrumPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _DrumPainter old) =>
+      old.position != position || old.slots != slots;
+}
+
+// ------------------------------------------------------------ weapon wheel
+
+/// Pixels of drag that turn the drum by one position.
+const double kWheelStepPixels = 38;
+
+/// The knurled thumbwheel that turns the weapon drum.
+///
+/// It lives at the bottom, under the thumb, while the drum it turns sits up
+/// in the top-right corner where it can be read: the hand works low, the eye
+/// reads high. Dragging up brings the next position round.
+class WeaponWheel extends StatelessWidget {
+  const WeaponWheel({
+    super.key,
+    required this.position,
+    required this.onRoll,
+    required this.onRelease,
+    this.width = 38,
+    this.height = 132,
+  });
+
+  /// Drum position, so the knurling turns with it.
+  final double position;
+
+  /// Called with the change in drum position while the wheel is dragged.
+  final ValueChanged<double> onRoll;
+
+  /// Called when the thumb comes off, so the drum can settle on a position.
+  final VoidCallback onRelease;
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onVerticalDragUpdate: (d) => onRoll(-d.delta.dy / kWheelStepPixels),
+      onVerticalDragEnd: (_) => onRelease(),
+      onVerticalDragCancel: onRelease,
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: CustomPaint(painter: _ThumbwheelPainter(position: position)),
+      ),
+    );
+  }
+}
+
+class _ThumbwheelPainter extends CustomPainter {
+  const _ThumbwheelPainter({required this.position});
+
+  final double position;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final frame = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      Radius.circular(size.width * 0.3),
+    );
+    // Steel bracket the wheel turns in.
+    canvas.drawRRect(
+      frame.shift(const Offset(0, 3)),
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.6)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+    );
+    canvas.drawRRect(
+      frame,
+      Paint()
+        ..shader = const LinearGradient(
+          colors: [Color(0xFF151817), Palette.plateSteel, Color(0xFF151817)],
+        ).createShader(frame.outerRect),
+    );
+
+    // The wheel itself: a brass cylinder seen side-on, lit from the left.
+    final wheel = Rect.fromLTRB(
+      size.width * 0.18,
+      size.width * 0.28,
+      size.width * 0.82,
+      size.height - size.width * 0.28,
+    );
+    final rim = RRect.fromRectAndRadius(wheel, Radius.circular(wheel.width * 0.25));
+    canvas.drawRRect(
+      rim,
+      Paint()
+        ..shader = const LinearGradient(
+          colors: [
+            Palette.brassDark,
+            Color(0xFFE6C781),
+            Palette.brass,
+            Palette.brassDark,
+          ],
+          stops: [0.0, 0.3, 0.6, 1.0],
+        ).createShader(wheel),
+    );
+
+    // Knurling: ridges that scroll with the drum, bunched towards the top and
+    // bottom where the cylinder turns away.
+    canvas.save();
+    canvas.clipRRect(rim);
+    final ridge = Paint()
+      ..strokeWidth = 1.4
+      ..color = Palette.brassDark.withValues(alpha: 0.9);
+    const ridges = 14;
+    final phase = (position * 3) % 1.0;
+    for (var i = -1; i <= ridges; i++) {
+      // 0..1 around the visible half of the cylinder.
+      final t = ((i + phase) / ridges).clamp(0.0, 1.0);
+      final y = wheel.center.dy - math.cos(t * math.pi) * wheel.height / 2;
+      canvas.drawLine(Offset(wheel.left, y), Offset(wheel.right, y), ridge);
+    }
+    canvas.drawRect(
+      wheel,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.black.withValues(alpha: 0.6),
+            Colors.black.withValues(alpha: 0.0),
+            Colors.black.withValues(alpha: 0.0),
+            Colors.black.withValues(alpha: 0.6),
+          ],
+          stops: const [0.0, 0.25, 0.75, 1.0],
+        ).createShader(wheel),
+    );
+    canvas.restore();
+
+    paintScrew(canvas, Offset(size.width / 2, size.width * 0.15), 2.4);
+    paintScrew(
+      canvas,
+      Offset(size.width / 2, size.height - size.width * 0.15),
+      2.4,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _ThumbwheelPainter old) =>
+      old.position != position;
 }
 
 // ------------------------------------------------------------ launch lamps
@@ -989,10 +1189,11 @@ int countdownLampsLit(double reloadFraction, int count) {
   return (reloadFraction * count).ceil().clamp(0, count);
 }
 
-/// Ready lamp and reload countdown beside the torpedo button.
+/// Ready lamp and reload countdown, in a row over the torpedo button.
 ///
-/// A narrow upright strip: it stands between the button and the optic, and
-/// every point of width it takes is width taken off the edge of the field.
+/// No lettering: five small lamps that go out one by one as the reload runs
+/// down, and the green one at the end of the row that lights when a torpedo
+/// can go.
 class LaunchLamps extends StatelessWidget {
   const LaunchLamps({
     super.key,
@@ -1012,25 +1213,23 @@ class LaunchLamps extends StatelessWidget {
   Widget build(BuildContext context) {
     final lit = countdownLampsLit(reloadFraction, count);
     return InstrumentPlate(
-      padding: const EdgeInsets.fromLTRB(9, 14, 9, 12),
-      child: Column(
+      padding: const EdgeInsets.fromLTRB(14, 9, 14, 9),
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Counted from the bottom up, so the last lamp to go out is the
-          // one next to the ready lamp.
+          // Counted from the left, so the last lamp to go out is the one
+          // next to the ready lamp.
           for (var i = count - 1; i >= 0; i--) ...[
             PanelLamp(on: i < lit, color: Palette.lamp, size: 9),
-            const SizedBox(height: 4),
+            const SizedBox(width: 4),
           ],
-          const SizedBox(height: 4),
+          const SizedBox(width: 3),
           PanelLamp(
             key: const ValueKey('ready-lamp'),
             on: ready,
             color: Palette.readyGreen,
-            size: 20,
+            size: 17,
           ),
-          const SizedBox(height: 5),
-          Text(Ru.ready, style: _plateLabel(7)),
         ],
       ),
     );

@@ -228,11 +228,11 @@ void main() {
     await tester.pump(const Duration(milliseconds: 16));
     expect(audio.enabled, isTrue);
 
-    await tester.tap(find.text('ЗВУК'));
+    await tester.tap(find.byKey(const ValueKey('sound-switch')));
     await tester.pump(const Duration(milliseconds: 16));
     expect(audio.enabled, isFalse);
 
-    await tester.tap(find.text('ЗВУК'));
+    await tester.tap(find.byKey(const ValueKey('sound-switch')));
     await tester.pump(const Duration(milliseconds: 16));
     expect(audio.enabled, isTrue);
   });
@@ -287,31 +287,44 @@ void main() {
       final size = await pumpAt(tester, const Size(915, 412));
       final mid = size.center(Offset.zero);
       final radar = tester.getRect(find.byType(RadarScope));
+      final sound = tester.getCenter(find.byKey(const ValueKey('sound-switch')));
       final info = tester.getRect(find.byType(InfoPanel));
       final drum = tester.getRect(find.byType(WeaponDrum));
       final button = tester.getRect(find.byType(FireButton));
       final lamps = tester.getRect(find.byType(LaunchLamps));
+      final thumb = tester.getRect(find.byType(WeaponWheel));
       final optic = tester.getCenter(find.byType(PeriscopeView));
 
       expect(optic.dx, closeTo(mid.dx, 1), reason: 'optic in the middle');
 
       expect(radar.center.dx, lessThan(mid.dx), reason: 'radar on the left');
       expect(radar.top, lessThan(20), reason: 'radar at the top');
+      // The alarm tab, with the speaker on it, stands outside the scope.
+      expect(sound.dx, lessThan(radar.left + radar.width * 0.3),
+          reason: 'alarm tab to the left of the radar');
 
       expect(info.center.dx, lessThan(mid.dx), reason: 'info on the left');
       expect(info.top, greaterThanOrEqualTo(radar.bottom), reason: 'below radar');
       expect(info.center.dy, closeTo(mid.dy, size.height * 0.12));
 
-      expect(drum.center.dx, greaterThan(mid.dx), reason: 'weapons right');
-      expect(drum.center.dy, closeTo(mid.dy, size.height * 0.2));
+      expect(drum.right, greaterThan(size.width * 0.95), reason: 'drum right');
+      expect(drum.top, lessThan(20), reason: 'drum at the top');
 
-      expect(button.center.dx, greaterThan(mid.dx));
+      expect(lamps.bottom, lessThanOrEqualTo(button.top),
+          reason: 'lamps in a row above the button');
+      expect(lamps.center.dx, closeTo(button.center.dx, 2));
+      expect(lamps.width, greaterThan(lamps.height * 2), reason: 'horizontal');
+
       expect(button.bottom, greaterThan(size.height * 0.9));
-      expect(button.right, greaterThan(size.width * 0.9));
-      expect(lamps.right, lessThanOrEqualTo(button.left),
-          reason: 'lamps stand beside the button');
-      expect(drum.bottom, lessThanOrEqualTo(button.top + 1),
-          reason: 'weapons do not sit on the button');
+      expect(thumb.left, greaterThan(button.right),
+          reason: 'thumbwheel to the right of the button');
+      expect(thumb.left - button.right, inInclusiveRange(4, 40),
+          reason: 'a small gap, not a gulf');
+      expect(thumb.right, greaterThan(size.width * 0.95),
+          reason: 'thumbwheel in the corner');
+      expect(thumb.height, greaterThan(thumb.width * 2), reason: 'upright');
+      expect(drum.bottom, lessThanOrEqualTo(lamps.top),
+          reason: 'drum clear of the lamps');
     });
 
     testWidgets('the wheel is sunk into the bottom edge', (tester) async {
@@ -324,28 +337,84 @@ void main() {
       expect(showing, inInclusiveRange(1 / 3, 0.5));
     });
 
-    testWidgets('the top-right corner is left empty', (tester) async {
-      final size = await pumpAt(tester, const Size(915, 412));
-      final corner = Rect.fromLTRB(
-        size.width * 0.8,
-        0,
-        size.width,
-        size.height * 0.25,
-      );
-      for (final type in const [
-        RadarScope,
-        InfoPanel,
-        WeaponDrum,
-        LaunchLamps,
-        FireButton,
-        HelmWheel,
-      ]) {
-        expect(
-          tester.getRect(find.byType(type)).overlaps(corner),
-          isFalse,
-          reason: '$type strays into the top-right corner',
-        );
+    testWidgets('the thumbwheel turns the drum, and an empty slot cannot '
+        'fire', (tester) async {
+      await pumpAt(tester, const Size(915, 412));
+      await tester.tap(find.text('ПОГРУЖЕНИЕ'));
+      await tester.pump(const Duration(milliseconds: 16));
+
+      PanelLamp ready() =>
+          tester.widget<PanelLamp>(find.byKey(const ValueKey('ready-lamp')));
+      double drum() =>
+          tester.widget<WeaponDrum>(find.byType(WeaponDrum)).position;
+      Future<void> settle() async {
+        for (var i = 0; i < 30; i++) {
+          await tester.pump(const Duration(milliseconds: 16));
+        }
       }
+
+      expect(ready().on, isTrue);
+
+      // Roll it up by a notch: the drum brings the next position round.
+      await tester.drag(
+        find.byType(WeaponWheel),
+        const Offset(0, -kWheelStepPixels * 1.2),
+      );
+      await settle();
+      expect(drum(), closeTo(1, 0.02));
+      expect(weaponSlotAt(drum()), WeaponSlot.empty);
+      expect(ready().on, isFalse, reason: 'nothing to launch in that slot');
+
+      await tester.tap(find.text('ТОРПЕДА'));
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(torpedoesLeft(tester), 12, reason: 'an empty slot fires nothing');
+
+      // And back down to the torpedo.
+      await tester.drag(
+        find.byType(WeaponWheel),
+        const Offset(0, kWheelStepPixels * 1.2),
+      );
+      await settle();
+      expect(weaponSlotAt(drum()), WeaponSlot.torpedo);
+      expect(ready().on, isTrue);
+      await tester.tap(find.text('ТОРПЕДА'));
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(torpedoesLeft(tester), 11);
+    });
+
+    testWidgets('the arrow keys turn the drum too', (tester) async {
+      await pumpAt(tester, const Size(915, 412));
+      await tester.tap(find.text('ПОГРУЖЕНИЕ'));
+      await tester.pump(const Duration(milliseconds: 16));
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(
+        tester.widget<WeaponDrum>(find.byType(WeaponDrum)).position,
+        closeTo(1, 0.02),
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(torpedoesLeft(tester), 12);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(torpedoesLeft(tester), 11);
+    });
+
+    testWidgets('the speaker glyph shows the sound state', (tester) async {
+      await pumpAt(tester, const Size(915, 412));
+      expect(find.byIcon(Icons.volume_up), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('sound-switch')));
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(find.byIcon(Icons.volume_off), findsOneWidget);
+      expect(find.text('ЗВУК'), findsNothing, reason: 'no word on the tab');
     });
 
     testWidgets('a tap on the glass fires, the instruments do not', (

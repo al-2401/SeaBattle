@@ -22,9 +22,10 @@ enum CockpitLayout {
   columns,
 
   /// Free-standing instruments in the corners around a full-width optic
-  /// (docs/cockpit.md): radar top left, info panel mid left, the wheel sunk
-  /// into the bottom left, weapons mid right, the torpedo button bottom
-  /// right. The top-right corner is left empty on purpose.
+  /// (docs/cockpit.md): alarm tab and radar top left, info panel mid left,
+  /// the wheel sunk into the bottom left, the weapon drum top right, and the
+  /// torpedo button bottom right with its lamps above it and the drum's
+  /// thumbwheel beside it.
   corners,
 }
 
@@ -71,6 +72,20 @@ class _GamePageState extends State<GamePage>
   double _time = 0;
   double _dragControl = 0;
 
+  // The weapon drum. [_drumPosition] follows the thumbwheel while it is
+  // being turned and then glides to [_drumTarget], the whole position the
+  // drum settles on.
+  double _drumPosition = 0;
+  double _drumTarget = 0;
+  bool _drumTurning = false;
+
+  /// The weapon the drum has settled on — or is about to.
+  WeaponSlot get _selectedWeapon =>
+      weaponSlotAt(_drumTurning ? _drumPosition : _drumTarget);
+
+  bool get _canFire =>
+      _world.canFire && _selectedWeapon == WeaponSlot.torpedo;
+
   static final Set<LogicalKeyboardKey> _portKeys = {
     LogicalKeyboardKey.arrowLeft,
     LogicalKeyboardKey.keyA,
@@ -100,7 +115,30 @@ class _GamePageState extends State<GamePage>
   /// its gesture before it tries to make a sound.
   void _fire() {
     _audio.unlock();
+    // An empty position on the drum has nothing to launch. Before the patrol
+    // the button still starts it, as it always has.
+    if (_world.phase == GamePhase.running &&
+        _selectedWeapon != WeaponSlot.torpedo) {
+      return;
+    }
     _world.fire();
+  }
+
+  void _rollDrum(double delta) {
+    _audio.unlock();
+    _drumTurning = true;
+    _drumPosition += delta;
+    _drumTarget = _drumPosition;
+  }
+
+  void _settleDrum() {
+    _drumTurning = false;
+    _drumTarget = _drumPosition.roundToDouble();
+  }
+
+  void _stepDrum(int steps) {
+    _drumTurning = false;
+    _drumTarget = _drumTarget.roundToDouble() + steps;
   }
 
   void _startPatrol() {
@@ -118,6 +156,9 @@ class _GamePageState extends State<GamePage>
     final dt = ((elapsed - _lastTick).inMicroseconds / 1e6).clamp(0.0, 0.05);
     _lastTick = elapsed;
     _time += dt;
+    if (!_drumTurning) {
+      _drumPosition += (_drumTarget - _drumPosition) * math.min(1.0, dt * 14);
+    }
     _world.periscope.control = _handleDemand();
     _world.update(dt);
 
@@ -158,6 +199,15 @@ class _GamePageState extends State<GamePage>
       }
       if (key == LogicalKeyboardKey.keyM) {
         _toggleSound();
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.arrowUp || key == LogicalKeyboardKey.keyW) {
+        _stepDrum(1);
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.arrowDown ||
+          key == LogicalKeyboardKey.keyS) {
+        _stepDrum(-1);
         return KeyEventResult.handled;
       }
       if (key == LogicalKeyboardKey.enter ||
@@ -227,28 +277,33 @@ class _GamePageState extends State<GamePage>
   /// stand on top and may overlap the outer rim a little.
   Widget _cornerCabinet(Size size) {
     const pad = 8.0;
+    const gap = 10.0;
     final height = size.height;
     final column = (size.width * 0.2).clamp(150.0, 210.0);
     final radar = (height * 0.30).clamp(96.0, 150.0);
     final wheel = (height * 0.72).clamp(150.0, 320.0);
     final wheelShowing = wheel * kWheelShowing;
     final button = (height * 0.30).clamp(80.0, 130.0);
+    final thumbWidth = (button * 0.3).clamp(30.0, 40.0);
+    final thumbHeight = button * 1.05;
+    final lampsHeight = 36.0;
     final threats = _world.threats;
 
-    // Mid-height slots on either side, centred on the screen's middle and as
-    // tall as the corners above and below leave free. The instrument is
-    // scaled down to fit rather than allowed to spill onto its neighbours.
-    Widget midSlot(double reserveTop, double reserveBottom, Widget child) {
-      final half = math.max(
-        24.0,
-        math.min(height / 2 - reserveTop, height - reserveBottom - height / 2),
-      );
-      return SizedBox(
-        width: column,
-        height: half * 2,
-        child: FittedBox(fit: BoxFit.scaleDown, child: child),
-      );
-    }
+    // Info panel mid-left: centred on the screen's middle and as tall as the
+    // radar above and the wheel below leave free, scaled down to fit rather
+    // than allowed to spill onto its neighbours.
+    final infoHalf = math.max(
+      24.0,
+      math.min(
+        height / 2 - (pad + radar + pad),
+        height - (wheelShowing + pad) - height / 2,
+      ),
+    );
+    // Drum top-right: down to just above the lamps over the torpedo button.
+    final drumHeight = math.max(
+      48.0,
+      height - pad - (pad + button + gap + lampsHeight + gap),
+    );
 
     return Stack(
       clipBehavior: Clip.hardEdge,
@@ -267,7 +322,11 @@ class _GamePageState extends State<GamePage>
             threats: threats,
             alarm: radarAlarm(threats, _world.config),
             time: _time,
-            soundLamp: _SoundLamp(on: _audio.enabled, onTap: _toggleSound),
+            soundLamp: _SoundLamp(
+              on: _audio.enabled,
+              onTap: _toggleSound,
+              iconOnly: true,
+            ),
           ),
         ),
         Positioned(
@@ -275,16 +334,19 @@ class _GamePageState extends State<GamePage>
           top: 0,
           bottom: 0,
           child: Center(
-            child: midSlot(
-              pad + radar + pad,
-              wheelShowing + pad,
-              InfoPanel(
-                vessel: _world.vesselInSight,
-                time: _time,
-                headingDegrees: _world.periscope.heading * 180 / math.pi,
-                hits: _world.hits,
-                score: _world.score,
-                gearDamage: _world.periscope.damage,
+            child: SizedBox(
+              width: column,
+              height: infoHalf * 2,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: InfoPanel(
+                  vessel: _world.vesselInSight,
+                  time: _time,
+                  headingDegrees: _world.periscope.heading * 180 / math.pi,
+                  hits: _world.hits,
+                  score: _world.score,
+                  gearDamage: _world.periscope.damage,
+                ),
               ),
             ),
           ),
@@ -305,16 +367,21 @@ class _GamePageState extends State<GamePage>
         ),
         Positioned(
           right: pad,
-          top: 0,
-          bottom: 0,
-          child: Center(
-            child: midSlot(
-              pad,
-              button + pad * 2,
-              WeaponDrum(remaining: _world.torpedoesRemaining),
+          top: pad,
+          width: column,
+          height: drumHeight,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.topRight,
+            child: WeaponDrum(
+              remaining: _world.torpedoesRemaining,
+              position: _drumPosition,
             ),
           ),
         ),
+        // Bottom right: the thumbwheel in the corner, and the torpedo button
+        // moved in towards the optic with its lamps in a row above it. The
+        // hand works down here; the drum it turns is read up in the corner.
         Positioned(
           right: pad,
           bottom: pad,
@@ -322,18 +389,37 @@ class _GamePageState extends State<GamePage>
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisSize: MainAxisSize.min,
             children: [
-              LaunchLamps(
-                reloadFraction: _reloadProgress,
-                ready: _world.canFire,
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    height: lampsHeight,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: LaunchLamps(
+                        reloadFraction: _reloadProgress,
+                        ready: _canFire,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: gap),
+                  FireButton(
+                    enabled: _canFire,
+                    // The countdown lamps above it carry the reload now; a
+                    // ring on the button as well would say it twice.
+                    reloadProgress: 0,
+                    onFire: _fire,
+                    diameter: button,
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              FireButton(
-                enabled: _world.canFire,
-                // The countdown lamps beside it carry the reload now; a ring
-                // on the button as well would say it twice.
-                reloadProgress: 0,
-                onFire: _fire,
-                diameter: button,
+              const SizedBox(width: gap * 1.6),
+              WeaponWheel(
+                position: _drumPosition,
+                onRoll: _rollDrum,
+                onRelease: _settleDrum,
+                width: thumbWidth,
+                height: thumbHeight,
               ),
             ],
           ),
@@ -656,14 +742,45 @@ class _StatusBar extends StatelessWidget {
 
 /// The sound switch on the cabinet front, with its little indicator lamp.
 class _SoundLamp extends StatelessWidget {
-  const _SoundLamp({required this.on, required this.onTap});
+  const _SoundLamp({
+    required this.on,
+    required this.onTap,
+    this.iconOnly = false,
+  });
 
   final bool on;
   final VoidCallback onTap;
 
+  /// A speaker glyph instead of the word, for the small alarm tab.
+  final bool iconOnly;
+
   @override
   Widget build(BuildContext context) {
+    if (iconOnly) {
+      return GestureDetector(
+        key: const ValueKey('sound-switch'),
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+          padding: const EdgeInsets.all(3),
+          child: Icon(
+            on ? Icons.volume_up : Icons.volume_off,
+            size: 16,
+            color: on ? Palette.lamp : Palette.steel.withValues(alpha: 0.6),
+            shadows: on
+                ? [
+                    Shadow(
+                      color: Palette.lamp.withValues(alpha: 0.6),
+                      blurRadius: 8,
+                    ),
+                  ]
+                : null,
+          ),
+        ),
+      );
+    }
     return GestureDetector(
+      key: const ValueKey('sound-switch'),
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Padding(

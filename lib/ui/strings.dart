@@ -49,7 +49,8 @@ class Ru {
       'отметки на ней это охотники и мины. После их бомб привод наводки '
       'навсегда начинает ходить по инерции.';
 
-  static const keyHints = '← → ПОВОРОТ    ПРОБЕЛ ЗАЛП    M ЗВУК    R ЗАНОВО';
+  static const keyHints =
+      '← → ПОВОРОТ    ↑ ↓ ОРУЖИЕ    ПРОБЕЛ ЗАЛП    M ЗВУК    R ЗАНОВО';
 
   /// Bearing readout in the header: «ПЕЛЕНГ Л15°».
   static String bearing(double degrees) {

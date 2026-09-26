@@ -201,4 +201,37 @@ void main() {
     expect(Ru.bearingCounter(72), 'П072');
     expect(Ru.bearingCounter(0.2), ' 000');
   });
+
+  group('weapon drum positions', () {
+    test('positions wrap round in both directions', () {
+      expect(weaponSlotAt(0), WeaponSlot.torpedo);
+      expect(weaponSlotAt(kWeaponSlots.length.toDouble()), WeaponSlot.torpedo);
+      expect(weaponSlotAt(-kWeaponSlots.length.toDouble()), WeaponSlot.torpedo);
+      expect(weaponSlotAt(1), WeaponSlot.empty);
+      expect(weaponSlotAt(-1), kWeaponSlots.last);
+    });
+
+    test('a half-turned drum reads as the nearer position', () {
+      expect(weaponSlotAt(0.4), WeaponSlot.torpedo);
+      expect(weaponSlotAt(0.6), WeaponSlot.empty);
+    });
+
+    test('only the torpedo is real; the rest are honest blanks', () {
+      expect(kWeaponSlots.where((s) => s == WeaponSlot.torpedo), hasLength(1));
+    });
+  });
+
+  testWidgets('the drum paints mid-turn without trouble', (tester) async {
+    for (final position in const [0.0, 0.5, 1.0, -1.3, 7.8]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(child: WeaponDrum(remaining: 4, position: position)),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    }
+  });
 }
+
