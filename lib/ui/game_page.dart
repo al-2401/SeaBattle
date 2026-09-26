@@ -22,10 +22,10 @@ enum CockpitLayout {
   columns,
 
   /// Free-standing instruments in the corners around a full-width optic
-  /// (docs/cockpit.md): alarm tab and radar top left, info panel mid left,
-  /// the wheel sunk into the bottom left, the weapon drum top right, and the
-  /// torpedo button bottom right with its lamps above it and the drum's
-  /// thumbwheel beside it.
+  /// (docs/cockpit.md): radar top left with the alarm strip along its
+  /// bottom, info panel under it, the wheel sunk into the bottom left, the
+  /// weapon drum top right (turned by dragging it), and the torpedo button
+  /// bottom right with its lamps upright beside it.
   corners,
 }
 
@@ -279,37 +279,37 @@ class _GamePageState extends State<GamePage>
     const pad = 8.0;
     const gap = 10.0;
     final height = size.height;
-    final column = (size.width * 0.2).clamp(150.0, 210.0);
-    final radar = (height * 0.30).clamp(96.0, 150.0);
-    final wheel = (height * 0.72).clamp(150.0, 320.0);
+    // Sizes are worked out for a phone 412 points high on its side and
+    // scaled with the height from there.
+    final k = (height / 412).clamp(0.75, 1.3);
+    // The weapon drum is drawn at 176 wide and shown at 80% of that; the
+    // radar is made as wide as the drum shows.
+    final drumWidth = 176 * 0.8 * k;
+    final radar = drumWidth;
+    final wheel = (height * 0.72 * 0.7).clamp(105.0, 224.0);
     final wheelShowing = wheel * kWheelShowing;
     final button = (height * 0.30).clamp(80.0, 130.0);
-    final thumbWidth = (button * 0.3).clamp(30.0, 40.0);
-    final thumbHeight = button * 1.05;
-    final lampsHeight = 36.0;
     final threats = _world.threats;
 
-    // Info panel mid-left: centred on the screen's middle and as tall as the
-    // radar above and the wheel below leave free, scaled down to fit rather
-    // than allowed to spill onto its neighbours.
-    final infoHalf = math.max(
-      24.0,
-      math.min(
-        height / 2 - (pad + radar + pad),
-        height - (wheelShowing + pad) - height / 2,
-      ),
-    );
-    // Drum top-right: down to just above the lamps over the torpedo button.
-    final drumHeight = math.max(
-      48.0,
-      height - pad - (pad + button + gap + lampsHeight + gap),
-    );
+    // The radar plate: its padding (top, the gap over the strip, bottom —
+    // 1 + 0.5 + 0.7 of the inset), the scope and the 20-point alarm strip.
+    // Kept in step with RadarScope.build, or the info panel below either
+    // overlaps it or loses the difference.
+    final radarInset = radar * 0.075;
+    final radarHeight = radarInset * 2.2 + (radar - radarInset * 2) + 20;
+    // Info panel: all the height the radar above and the wheel below leave,
+    // and a little more width than the drum — scaled up to fill that box.
+    final infoTop = pad + radarHeight + pad;
+    final infoBottom = wheelShowing + pad;
+    final infoWidth = (size.width * 0.27).clamp(170.0, 280.0);
+    // Drum: from the top down to above the torpedo button.
+    final drumMaxHeight = math.max(48.0, height - pad - (pad + button + gap));
 
     return Stack(
       clipBehavior: Clip.hardEdge,
       children: [
         Positioned.fill(
-          child: _scope(withOverlay: false, sideMargin: column * 0.5),
+          child: _scope(withOverlay: false, sideMargin: drumWidth * 0.65),
         ),
         Positioned(
           left: pad,
@@ -331,30 +331,26 @@ class _GamePageState extends State<GamePage>
         ),
         Positioned(
           left: pad,
-          top: 0,
-          bottom: 0,
-          child: Center(
-            child: SizedBox(
-              width: column,
-              height: infoHalf * 2,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: InfoPanel(
-                  vessel: _world.vesselInSight,
-                  time: _time,
-                  headingDegrees: _world.periscope.heading * 180 / math.pi,
-                  hits: _world.hits,
-                  score: _world.score,
-                  gearDamage: _world.periscope.damage,
-                ),
-              ),
+          top: infoTop,
+          bottom: infoBottom,
+          width: infoWidth,
+          child: FittedBox(
+            fit: BoxFit.contain,
+            alignment: Alignment.centerLeft,
+            child: InfoPanel(
+              vessel: _world.vesselInSight,
+              time: _time,
+              headingDegrees: _world.periscope.heading * 180 / math.pi,
+              hits: _world.hits,
+              score: _world.score,
+              gearDamage: _world.periscope.damage,
             ),
           ),
         ),
         // The wheel is sunk into the bottom edge: most of it is below the
         // screen, and the part that shows is under the left thumb.
         Positioned(
-          left: column * 0.62 - wheel / 2,
+          left: pad + wheel * 0.42 - wheel / 2,
           bottom: wheelShowing - wheel,
           width: wheel,
           height: wheel,
@@ -368,20 +364,27 @@ class _GamePageState extends State<GamePage>
         Positioned(
           right: pad,
           top: pad,
-          width: column,
-          height: drumHeight,
+          width: drumWidth,
+          height: drumMaxHeight,
           child: FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.topRight,
-            child: WeaponDrum(
-              remaining: _world.torpedoesRemaining,
-              position: _drumPosition,
+            child: SizedBox(
+              width: drumWidth,
+              child: FittedBox(
+                fit: BoxFit.contain,
+                child: WeaponDrum(
+                  remaining: _world.torpedoesRemaining,
+                  position: _drumPosition,
+                  onRoll: _rollDrum,
+                  onRelease: _settleDrum,
+                ),
+              ),
             ),
           ),
         ),
-        // Bottom right: the thumbwheel in the corner, and the torpedo button
-        // moved in towards the optic with its lamps in a row above it. The
-        // hand works down here; the drum it turns is read up in the corner.
+        // Bottom right: the torpedo button, moved in towards the optic, with
+        // the ready lamp and the reload countdown upright beside it.
         Positioned(
           right: pad,
           bottom: pad,
@@ -389,37 +392,25 @@ class _GamePageState extends State<GamePage>
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    height: lampsHeight,
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: LaunchLamps(
-                        reloadFraction: _reloadProgress,
-                        ready: _canFire,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: gap),
-                  FireButton(
-                    enabled: _canFire,
-                    // The countdown lamps above it carry the reload now; a
-                    // ring on the button as well would say it twice.
-                    reloadProgress: 0,
-                    onFire: _fire,
-                    diameter: button,
-                  ),
-                ],
+              FireButton(
+                enabled: _canFire,
+                // The countdown lamps beside it carry the reload now; a ring
+                // on the button as well would say it twice.
+                reloadProgress: 0,
+                onFire: _fire,
+                diameter: button,
               ),
-              const SizedBox(width: gap * 1.6),
-              WeaponWheel(
-                position: _drumPosition,
-                onRoll: _rollDrum,
-                onRelease: _settleDrum,
-                width: thumbWidth,
-                height: thumbHeight,
+              const SizedBox(width: gap),
+              SizedBox(
+                height: button,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.bottomCenter,
+                  child: LaunchLamps(
+                    reloadFraction: _reloadProgress,
+                    ready: _canFire,
+                  ),
+                ),
               ),
             ],
           ),

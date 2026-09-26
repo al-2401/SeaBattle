@@ -279,7 +279,8 @@ bool radarAlarm(List<Threat> threats, GameConfig config) {
   );
 }
 
-/// The plan-position radar, top left.
+/// The plan-position radar, top left, with the alarm lamp and the sound
+/// switch along the bottom of its plate.
 ///
 /// It says where, never who: every contact is the same green dot, and it
 /// only carries what the hydrophone already reports — escorts and mines
@@ -305,52 +306,62 @@ class RadarScope extends StatelessWidget {
   final bool alarm;
   final double time;
 
-  /// The sound switch rides on the radar's side tab, under the alarm lamp:
-  /// a speaker glyph rather than a word, so the tab stays small.
+  /// The sound switch rides on the radar's bottom strip, beside the alarm
+  /// lamp: a speaker glyph rather than a word, so the strip stays short.
   final Widget? soundLamp;
 
   @override
   Widget build(BuildContext context) {
-    // The alarm tab stands on the outside, so the scope itself sits next to
-    // the optic where the eye already is.
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        InstrumentPlate(
-          padding: const EdgeInsets.fromLTRB(7, 10, 7, 10),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(Ru.alarm, style: _plateLabel(6.5)),
-              const SizedBox(height: 4),
-              PanelLamp(on: alarm, color: Palette.alarm, size: 13),
-              if (soundLamp != null) ...[
-                const SizedBox(height: 8),
-                soundLamp!,
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(width: 3),
-        SizedBox(
-          width: size,
-          height: size,
-          child: InstrumentPlate(
-            padding: EdgeInsets.all(size * 0.075),
-            child: CustomPaint(
-              size: Size.infinite,
-              painter: _RadarPainter(
-                heading: heading,
-                fieldOfView: fieldOfView,
-                traverseLimit: traverseLimit,
-                threats: threats,
-                sweep: radarSweepAt(time),
+    // One plate: the scope on top, and along its bottom edge a strip with
+    // the alarm lamp and the speaker — so the radar can be as big as the
+    // corner allows without a tab beside it eating the width.
+    final inset = size * 0.075;
+    final scope = size - inset * 2;
+    return SizedBox(
+      width: size,
+      child: InstrumentPlate(
+        padding: EdgeInsets.fromLTRB(inset, inset, inset, inset * 0.7),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: scope,
+              height: scope,
+              child: CustomPaint(
+                painter: _RadarPainter(
+                  heading: heading,
+                  fieldOfView: fieldOfView,
+                  traverseLimit: traverseLimit,
+                  threats: threats,
+                  sweep: radarSweepAt(time),
+                ),
               ),
             ),
-          ),
+            SizedBox(height: inset * 0.5),
+            SizedBox(
+              height: 20,
+              child: Row(
+                children: [
+                  const SizedBox(width: 6),
+                  PanelLamp(on: alarm, color: Palette.alarm, size: 12),
+                  const SizedBox(width: 6),
+                  // On a small radar the word gives way before the lamp or
+                  // the speaker do.
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(Ru.alarm, style: _plateLabel(7)),
+                    ),
+                  ),
+                  ?soundLamp,
+                  const SizedBox(width: 2),
+                ],
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -557,6 +568,10 @@ String targetNameFlaps(Vessel? vessel, double time) {
 
 /// Target above, own boat below — in one plate, but kept apart, so a number
 /// is never ambiguous about whose it is.
+///
+/// Drawn at a fixed [width] and scaled by the layout. The width is set by
+/// the own-boat row — three counters abreast with their labels — which has
+/// to fit even in a wide monospace face.
 class InfoPanel extends StatelessWidget {
   const InfoPanel({
     super.key,
@@ -566,7 +581,7 @@ class InfoPanel extends StatelessWidget {
     required this.hits,
     required this.score,
     required this.gearDamage,
-    this.width = 196,
+    this.width = 210,
   });
 
   final Vessel? vessel;
@@ -603,7 +618,7 @@ class InfoPanel extends StatelessWidget {
             ),
             const SizedBox(height: 5),
             Container(
-              height: 30,
+              height: 27,
               decoration: BoxDecoration(
                 color: Palette.readoutWindow,
                 borderRadius: BorderRadius.circular(3),
@@ -641,9 +656,12 @@ class InfoPanel extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 7),
             Container(height: 1, color: Palette.cream.withValues(alpha: 0.18)),
-            const SizedBox(height: 6),
+            const SizedBox(height: 5),
+            // Own boat: three counters abreast and the gear lamps under them.
+            // One row instead of two keeps the panel short, so the same
+            // height buys bigger lettering.
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -664,13 +682,6 @@ class InfoPanel extends StatelessWidget {
                     fontSize: 11,
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                _GearPips(damage: gearDamage),
                 const Spacer(),
                 _Labelled(
                   label: Ru.hitsLabel,
@@ -682,6 +693,8 @@ class InfoPanel extends StatelessWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 6),
+            _GearPips(damage: gearDamage),
           ],
         ),
       ),
@@ -719,21 +732,14 @@ class _GearPips extends StatelessWidget {
   Widget build(BuildContext context) {
     const steps = 4;
     final lit = (damage * steps).round().clamp(0, steps);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
+    return Row(
       children: [
         Text(Ru.gear, style: _plateLabel(7)),
-        const SizedBox(height: 4),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (var i = 0; i < steps; i++) ...[
-              if (i > 0) const SizedBox(width: 3),
-              PanelLamp(on: i < lit, color: Palette.alarm, size: 10),
-            ],
-          ],
-        ),
+        const SizedBox(width: 6),
+        for (var i = 0; i < steps; i++) ...[
+          if (i > 0) const SizedBox(width: 3),
+          PanelLamp(on: i < lit, color: Palette.alarm, size: 10),
+        ],
       ],
     );
   }
@@ -840,11 +846,17 @@ WeaponSlot weaponSlotAt(double position, [List<WeaponSlot> slots = kWeaponSlots]
   return slots[index < 0 ? index + slots.length : index];
 }
 
+/// Screen points of drag on the drum that turn it by one position — on the
+/// screen, not on the drum, so it feels the same however much the layout
+/// has scaled the drum down.
+const double kDrumStepPixels = 30;
+
 /// Weapon selection, top right.
 ///
 /// A drum shows the position before, the one selected and the one after, so
-/// it works the same for three weapons or seven. [position] is fractional
-/// while the wheel is being turned — the drum rolls with it, then settles.
+/// it works the same for three weapons or seven. It is turned by dragging
+/// the drum itself up or down: [position] is fractional while it is being
+/// dragged — the drum rolls under the thumb — and settles when let go.
 class WeaponDrum extends StatelessWidget {
   const WeaponDrum({
     super.key,
@@ -852,6 +864,8 @@ class WeaponDrum extends StatelessWidget {
     this.position = 0,
     this.slots = kWeaponSlots,
     this.width = 176,
+    this.onRoll,
+    this.onRelease,
   });
 
   final int remaining;
@@ -859,8 +873,21 @@ class WeaponDrum extends StatelessWidget {
   final List<WeaponSlot> slots;
   final double width;
 
+  /// Called with the change in position while the drum is dragged.
+  final ValueChanged<double>? onRoll;
+
+  /// Called when the thumb comes off, so the drum can settle.
+  final VoidCallback? onRelease;
+
   @override
   Widget build(BuildContext context) {
+    final plate = _plate();
+    final roll = onRoll;
+    if (roll == null) return plate;
+    return _DrumDrag(onRoll: roll, onRelease: onRelease, child: plate);
+  }
+
+  Widget _plate() {
     return SizedBox(
       width: width,
       child: InstrumentPlate(
@@ -890,6 +917,47 @@ class WeaponDrum extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Turns the drum by vertical drags, measured in screen points.
+///
+/// A drag's own delta is in the drum's coordinates, which the layout scales;
+/// the global position is not, so the distance comes from that.
+class _DrumDrag extends StatefulWidget {
+  const _DrumDrag({
+    required this.onRoll,
+    required this.onRelease,
+    required this.child,
+  });
+
+  final ValueChanged<double> onRoll;
+  final VoidCallback? onRelease;
+  final Widget child;
+
+  @override
+  State<_DrumDrag> createState() => _DrumDragState();
+}
+
+class _DrumDragState extends State<_DrumDrag> {
+  double _lastY = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onVerticalDragStart: (d) => _lastY = d.globalPosition.dy,
+      // Dragging up brings the next position round, the way the drum's
+      // surface moves under the thumb.
+      onVerticalDragUpdate: (d) {
+        final y = d.globalPosition.dy;
+        widget.onRoll(-(y - _lastY) / kDrumStepPixels);
+        _lastY = y;
+      },
+      onVerticalDragEnd: (_) => widget.onRelease?.call(),
+      onVerticalDragCancel: () => widget.onRelease?.call(),
+      child: widget.child,
     );
   }
 }
@@ -1038,146 +1106,6 @@ class _DrumPainter extends CustomPainter {
       old.position != position || old.slots != slots;
 }
 
-// ------------------------------------------------------------ weapon wheel
-
-/// Pixels of drag that turn the drum by one position.
-const double kWheelStepPixels = 38;
-
-/// The knurled thumbwheel that turns the weapon drum.
-///
-/// It lives at the bottom, under the thumb, while the drum it turns sits up
-/// in the top-right corner where it can be read: the hand works low, the eye
-/// reads high. Dragging up brings the next position round.
-class WeaponWheel extends StatelessWidget {
-  const WeaponWheel({
-    super.key,
-    required this.position,
-    required this.onRoll,
-    required this.onRelease,
-    this.width = 38,
-    this.height = 132,
-  });
-
-  /// Drum position, so the knurling turns with it.
-  final double position;
-
-  /// Called with the change in drum position while the wheel is dragged.
-  final ValueChanged<double> onRoll;
-
-  /// Called when the thumb comes off, so the drum can settle on a position.
-  final VoidCallback onRelease;
-  final double width;
-  final double height;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onVerticalDragUpdate: (d) => onRoll(-d.delta.dy / kWheelStepPixels),
-      onVerticalDragEnd: (_) => onRelease(),
-      onVerticalDragCancel: onRelease,
-      child: SizedBox(
-        width: width,
-        height: height,
-        child: CustomPaint(painter: _ThumbwheelPainter(position: position)),
-      ),
-    );
-  }
-}
-
-class _ThumbwheelPainter extends CustomPainter {
-  const _ThumbwheelPainter({required this.position});
-
-  final double position;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final frame = RRect.fromRectAndRadius(
-      Offset.zero & size,
-      Radius.circular(size.width * 0.3),
-    );
-    // Steel bracket the wheel turns in.
-    canvas.drawRRect(
-      frame.shift(const Offset(0, 3)),
-      Paint()
-        ..color = Colors.black.withValues(alpha: 0.6)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
-    );
-    canvas.drawRRect(
-      frame,
-      Paint()
-        ..shader = const LinearGradient(
-          colors: [Color(0xFF151817), Palette.plateSteel, Color(0xFF151817)],
-        ).createShader(frame.outerRect),
-    );
-
-    // The wheel itself: a brass cylinder seen side-on, lit from the left.
-    final wheel = Rect.fromLTRB(
-      size.width * 0.18,
-      size.width * 0.28,
-      size.width * 0.82,
-      size.height - size.width * 0.28,
-    );
-    final rim = RRect.fromRectAndRadius(wheel, Radius.circular(wheel.width * 0.25));
-    canvas.drawRRect(
-      rim,
-      Paint()
-        ..shader = const LinearGradient(
-          colors: [
-            Palette.brassDark,
-            Color(0xFFE6C781),
-            Palette.brass,
-            Palette.brassDark,
-          ],
-          stops: [0.0, 0.3, 0.6, 1.0],
-        ).createShader(wheel),
-    );
-
-    // Knurling: ridges that scroll with the drum, bunched towards the top and
-    // bottom where the cylinder turns away.
-    canvas.save();
-    canvas.clipRRect(rim);
-    final ridge = Paint()
-      ..strokeWidth = 1.4
-      ..color = Palette.brassDark.withValues(alpha: 0.9);
-    const ridges = 14;
-    final phase = (position * 3) % 1.0;
-    for (var i = -1; i <= ridges; i++) {
-      // 0..1 around the visible half of the cylinder.
-      final t = ((i + phase) / ridges).clamp(0.0, 1.0);
-      final y = wheel.center.dy - math.cos(t * math.pi) * wheel.height / 2;
-      canvas.drawLine(Offset(wheel.left, y), Offset(wheel.right, y), ridge);
-    }
-    canvas.drawRect(
-      wheel,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.black.withValues(alpha: 0.6),
-            Colors.black.withValues(alpha: 0.0),
-            Colors.black.withValues(alpha: 0.0),
-            Colors.black.withValues(alpha: 0.6),
-          ],
-          stops: const [0.0, 0.25, 0.75, 1.0],
-        ).createShader(wheel),
-    );
-    canvas.restore();
-
-    paintScrew(canvas, Offset(size.width / 2, size.width * 0.15), 2.4);
-    paintScrew(
-      canvas,
-      Offset(size.width / 2, size.height - size.width * 0.15),
-      2.4,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _ThumbwheelPainter old) =>
-      old.position != position;
-}
-
 // ------------------------------------------------------------ launch lamps
 
 /// How many countdown lamps are still lit, [count] of them in all.
@@ -1189,17 +1117,18 @@ int countdownLampsLit(double reloadFraction, int count) {
   return (reloadFraction * count).ceil().clamp(0, count);
 }
 
-/// Ready lamp and reload countdown, in a row over the torpedo button.
+/// Ready lamp and reload countdown beside the torpedo button.
 ///
 /// No lettering: five small lamps that go out one by one as the reload runs
 /// down, and the green one at the end of the row that lights when a torpedo
-/// can go.
+/// can go. Upright by default, to stand at the side of the button.
 class LaunchLamps extends StatelessWidget {
   const LaunchLamps({
     super.key,
     required this.reloadFraction,
     required this.ready,
     this.count = 5,
+    this.vertical = true,
   });
 
   /// 1 at the start of a reload, 0 when done.
@@ -1208,30 +1137,36 @@ class LaunchLamps extends StatelessWidget {
   /// Whether a torpedo can go right now.
   final bool ready;
   final int count;
+  final bool vertical;
 
   @override
   Widget build(BuildContext context) {
     final lit = countdownLampsLit(reloadFraction, count);
-    return InstrumentPlate(
-      padding: const EdgeInsets.fromLTRB(14, 9, 14, 9),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Counted from the left, so the last lamp to go out is the one
-          // next to the ready lamp.
-          for (var i = count - 1; i >= 0; i--) ...[
-            PanelLamp(on: i < lit, color: Palette.lamp, size: 9),
-            const SizedBox(width: 4),
-          ],
-          const SizedBox(width: 3),
-          PanelLamp(
-            key: const ValueKey('ready-lamp'),
-            on: ready,
-            color: Palette.readyGreen,
-            size: 17,
-          ),
-        ],
+    final gap = vertical
+        ? const SizedBox(height: 5)
+        : const SizedBox(width: 4);
+    // The last lamp to go out is the one next to the ready lamp, at the
+    // bottom (or the right) of the strip.
+    final children = <Widget>[
+      for (var i = count - 1; i >= 0; i--) ...[
+        PanelLamp(on: i < lit, color: Palette.lamp, size: 9),
+        gap,
+      ],
+      vertical ? const SizedBox(height: 3) : const SizedBox(width: 3),
+      PanelLamp(
+        key: const ValueKey('ready-lamp'),
+        on: ready,
+        color: Palette.readyGreen,
+        size: 17,
       ),
+    ];
+    return InstrumentPlate(
+      padding: vertical
+          ? const EdgeInsets.fromLTRB(9, 14, 9, 14)
+          : const EdgeInsets.fromLTRB(14, 9, 14, 9),
+      child: vertical
+          ? Column(mainAxisSize: MainAxisSize.min, children: children)
+          : Row(mainAxisSize: MainAxisSize.min, children: children),
     );
   }
 }

@@ -287,44 +287,52 @@ void main() {
       final size = await pumpAt(tester, const Size(915, 412));
       final mid = size.center(Offset.zero);
       final radar = tester.getRect(find.byType(RadarScope));
+      final radarSide = tester.widget<RadarScope>(find.byType(RadarScope)).size;
       final sound = tester.getCenter(find.byKey(const ValueKey('sound-switch')));
       final info = tester.getRect(find.byType(InfoPanel));
       final drum = tester.getRect(find.byType(WeaponDrum));
       final button = tester.getRect(find.byType(FireButton));
       final lamps = tester.getRect(find.byType(LaunchLamps));
-      final thumb = tester.getRect(find.byType(WeaponWheel));
+      final wheel = tester.getRect(find.byType(HelmWheel));
       final optic = tester.getCenter(find.byType(PeriscopeView));
 
       expect(optic.dx, closeTo(mid.dx, 1), reason: 'optic in the middle');
 
-      expect(radar.center.dx, lessThan(mid.dx), reason: 'radar on the left');
-      expect(radar.top, lessThan(20), reason: 'radar at the top');
-      // The alarm tab, with the speaker on it, stands outside the scope.
-      expect(sound.dx, lessThan(radar.left + radar.width * 0.3),
-          reason: 'alarm tab to the left of the radar');
+      expect(radar.left, lessThan(20), reason: 'radar top left');
+      expect(radar.top, lessThan(20));
+      // The alarm and the speaker are a strip along the radar's own bottom.
+      expect(radar.contains(sound), isTrue, reason: 'on the radar plate');
+      expect(sound.dy, greaterThan(radar.top + radar.height * 0.8),
+          reason: 'along its bottom edge');
 
-      expect(info.center.dx, lessThan(mid.dx), reason: 'info on the left');
-      expect(info.top, greaterThanOrEqualTo(radar.bottom), reason: 'below radar');
-      expect(info.center.dy, closeTo(mid.dy, size.height * 0.12));
-
+      // Drum shown at 80% of its drawn width; the radar made as wide.
+      expect(drum.width, closeTo(176 * 0.8, 1), reason: 'drum 20% smaller');
+      expect(radarSide, closeTo(drum.width, 1), reason: 'radar as wide');
       expect(drum.right, greaterThan(size.width * 0.95), reason: 'drum right');
       expect(drum.top, lessThan(20), reason: 'drum at the top');
 
-      expect(lamps.bottom, lessThanOrEqualTo(button.top),
-          reason: 'lamps in a row above the button');
-      expect(lamps.center.dx, closeTo(button.center.dx, 2));
-      expect(lamps.width, greaterThan(lamps.height * 2), reason: 'horizontal');
+      // Wheel 30% smaller than the 72%-of-height it used to be.
+      expect(wheel.width, closeTo(size.height * 0.72 * 0.7, 1));
+
+      // Info panel: below the radar, and filling the room down to the
+      // wheel — as big as that room allows.
+      expect(info.top, greaterThanOrEqualTo(radar.bottom), reason: 'below radar');
+      expect(info.bottom, lessThanOrEqualTo(wheel.top), reason: 'above wheel');
+      final room = wheel.top - radar.bottom;
+      expect(
+        info.height > room - 20 || info.width > size.width * 0.27 - 1,
+        isTrue,
+        reason: 'the panel fills the room it has',
+      );
 
       expect(button.bottom, greaterThan(size.height * 0.9));
-      expect(thumb.left, greaterThan(button.right),
-          reason: 'thumbwheel to the right of the button');
-      expect(thumb.left - button.right, inInclusiveRange(4, 40),
-          reason: 'a small gap, not a gulf');
-      expect(thumb.right, greaterThan(size.width * 0.95),
-          reason: 'thumbwheel in the corner');
-      expect(thumb.height, greaterThan(thumb.width * 2), reason: 'upright');
-      expect(drum.bottom, lessThanOrEqualTo(lamps.top),
-          reason: 'drum clear of the lamps');
+      expect(lamps.left, greaterThanOrEqualTo(button.right),
+          reason: 'lamps to the right of the button');
+      expect(lamps.height, greaterThan(lamps.width * 2), reason: 'upright');
+      expect(lamps.right, greaterThan(size.width * 0.95));
+      expect(drum.bottom, lessThanOrEqualTo(button.top),
+          reason: 'drum clear of the button');
+      expect(find.byType(WeaponDrum), findsOneWidget);
     });
 
     testWidgets('the wheel is sunk into the bottom edge', (tester) async {
@@ -337,8 +345,9 @@ void main() {
       expect(showing, inInclusiveRange(1 / 3, 0.5));
     });
 
-    testWidgets('the thumbwheel turns the drum, and an empty slot cannot '
-        'fire', (tester) async {
+    testWidgets('dragging the drum turns it, and an empty slot cannot fire', (
+      tester,
+    ) async {
       await pumpAt(tester, const Size(915, 412));
       await tester.tap(find.text('ПОГРУЖЕНИЕ'));
       await tester.pump(const Duration(milliseconds: 16));
@@ -355,10 +364,10 @@ void main() {
 
       expect(ready().on, isTrue);
 
-      // Roll it up by a notch: the drum brings the next position round.
+      // Drag it up by a notch: the drum brings the next position round.
       await tester.drag(
-        find.byType(WeaponWheel),
-        const Offset(0, -kWheelStepPixels * 1.2),
+        find.byType(WeaponDrum),
+        const Offset(0, -kDrumStepPixels * 1.2),
       );
       await settle();
       expect(drum(), closeTo(1, 0.02));
@@ -371,8 +380,8 @@ void main() {
 
       // And back down to the torpedo.
       await tester.drag(
-        find.byType(WeaponWheel),
-        const Offset(0, kWheelStepPixels * 1.2),
+        find.byType(WeaponDrum),
+        const Offset(0, kDrumStepPixels * 1.2),
       );
       await settle();
       expect(weaponSlotAt(drum()), WeaponSlot.torpedo);
@@ -381,6 +390,28 @@ void main() {
       await tester.pump(const Duration(milliseconds: 16));
       expect(torpedoesLeft(tester), 11);
     });
+
+    for (final size in const [Size(915, 412), Size(700, 320), Size(1280, 600)]) {
+      testWidgets('one notch of drag is one position at '
+          '${size.width.round()}×${size.height.round()}', (tester) async {
+        await pumpAt(tester, size);
+        await tester.tap(find.text('ПОГРУЖЕНИЕ'));
+        await tester.pump(const Duration(milliseconds: 16));
+        // The same finger movement on every screen, however much the layout
+        // has scaled the drum.
+        await tester.drag(
+          find.byType(WeaponDrum),
+          const Offset(0, -kDrumStepPixels * 1.2),
+        );
+        for (var i = 0; i < 30; i++) {
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        expect(
+          tester.widget<WeaponDrum>(find.byType(WeaponDrum)).position,
+          closeTo(1, 0.02),
+        );
+      });
+    }
 
     testWidgets('the arrow keys turn the drum too', (tester) async {
       await pumpAt(tester, const Size(915, 412));
