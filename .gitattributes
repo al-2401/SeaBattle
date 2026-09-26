@@ -1,0 +1,9 @@
+# The generated soundtrack is binary: never let a checkout rewrite its line
+# endings, which would corrupt every WAV on a Windows clone.
+*.wav binary
+*.png binary
+
+# Source stays LF in the repository whatever the local git is configured to do.
+*.dart text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
