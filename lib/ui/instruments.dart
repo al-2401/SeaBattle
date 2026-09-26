@@ -279,7 +279,7 @@ bool radarAlarm(List<Threat> threats, GameConfig config) {
   );
 }
 
-/// The plan-position radar, top left, with the alarm tab beside it.
+/// The plan-position radar, left, under the info panel.
 ///
 /// It says where, never who: every contact is the same green dot, and it
 /// only carries what the hydrophone already reports — escorts and mines
@@ -292,7 +292,6 @@ class RadarScope extends StatelessWidget {
     required this.fieldOfView,
     required this.traverseLimit,
     required this.threats,
-    required this.alarm,
     required this.time,
   });
 
@@ -302,57 +301,123 @@ class RadarScope extends StatelessWidget {
   final double fieldOfView;
   final double traverseLimit;
   final List<Threat> threats;
-
-  /// Whether the alarm lamp is lit.
-  final bool alarm;
   final double time;
 
   @override
   Widget build(BuildContext context) {
-    final inset = size * 0.075;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          width: size,
-          height: size,
-          child: InstrumentPlate(
-            padding: EdgeInsets.all(inset),
-            child: CustomPaint(
-              size: Size.infinite,
-              painter: _RadarPainter(
-                heading: heading,
-                fieldOfView: fieldOfView,
-                traverseLimit: traverseLimit,
-                threats: threats,
-                sweep: radarSweepAt(time),
-              ),
+    return SizedBox(
+      width: size,
+      height: size,
+      child: InstrumentPlate(
+        padding: EdgeInsets.all(size * 0.075),
+        child: CustomPaint(
+          size: Size.infinite,
+          painter: _RadarPainter(
+            heading: heading,
+            fieldOfView: fieldOfView,
+            traverseLimit: traverseLimit,
+            threats: threats,
+            sweep: radarSweepAt(time),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The alarm: an oval annunciator lamp with its name on the glass, set in
+/// the notch at the top of the eyepiece — straight above the cross-hair,
+/// where the eye already is when something is heard.
+class AlarmLamp extends StatelessWidget {
+  const AlarmLamp({super.key, required this.on, this.width = 104});
+
+  final bool on;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final height = width * 0.3;
+    return SizedBox(
+      width: width,
+      height: height,
+      child: CustomPaint(
+        painter: _AlarmLampPainter(on: on),
+        child: Center(
+          child: Text(
+            Ru.alarm,
+            style: kStencil.copyWith(
+              fontSize: height * 0.36,
+              letterSpacing: 2,
+              color: on
+                  ? const Color(0xFFFFF1E6)
+                  : Palette.cream.withValues(alpha: 0.32),
+              shadows: on
+                  ? const [Shadow(color: Color(0xFF7A140A), blurRadius: 3)]
+                  : null,
             ),
           ),
         ),
-        const SizedBox(width: 3),
-        // The alarm tab: up at the top, on the side towards the optic.
-        InstrumentPlate(
-          key: const ValueKey('alarm-tab'),
-          padding: const EdgeInsets.fromLTRB(8, 11, 8, 11),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(Ru.alarm, style: _plateLabel(6.5)),
-              const SizedBox(height: 5),
-              PanelLamp(
-                key: const ValueKey('alarm-lamp'),
-                on: alarm,
-                color: Palette.alarm,
-                size: 14,
-              ),
-            ],
-          ),
-        ),
-      ],
+      ),
     );
   }
+}
+
+class _AlarmLampPainter extends CustomPainter {
+  const _AlarmLampPainter({required this.on});
+
+  final bool on;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bezel = Offset.zero & size;
+    final glass = bezel.deflate(size.height * 0.14);
+
+    if (on) {
+      // The glow spills out over the rim and into the dark around it.
+      canvas.drawOval(
+        bezel.inflate(size.height * 0.25),
+        Paint()
+          ..color = Palette.alarm.withValues(alpha: 0.45)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, size.height * 0.45),
+      );
+    }
+    // Brass bezel.
+    canvas.drawOval(
+      bezel,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFFE6C781), Palette.brass, Palette.brassDark],
+        ).createShader(bezel),
+    );
+    // The glass: dark red when off, lit from inside when on.
+    canvas.drawOval(
+      glass,
+      Paint()
+        ..shader = RadialGradient(
+          center: const Alignment(0, -0.2),
+          radius: 0.8,
+          colors: on
+              ? const [Color(0xFFFF8A6A), Palette.alarm, Color(0xFF8A1A0E)]
+              : const [Color(0xFF3A1511), Color(0xFF220B08), Color(0xFF120605)],
+          stops: const [0.0, 0.55, 1.0],
+        ).createShader(glass),
+    );
+    // A highlight across the top of the glass.
+    canvas.drawOval(
+      Rect.fromLTWH(
+        glass.left + glass.width * 0.18,
+        glass.top + glass.height * 0.08,
+        glass.width * 0.64,
+        glass.height * 0.3,
+      ),
+      Paint()..color = Colors.white.withValues(alpha: on ? 0.22 : 0.07),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _AlarmLampPainter old) => old.on != on;
 }
 
 /// Whether the alarm lamp should be lit this frame: it flashes while the

@@ -22,8 +22,8 @@ enum CockpitLayout {
   columns,
 
   /// Free-standing instruments in the corners around a full-width optic
-  /// (docs/cockpit.md): radar top left with the alarm tab beside it, info
-  /// panel under it, the wheel sunk into the bottom left, the
+  /// (docs/cockpit.md): info panel top left with the radar under it, the
+  /// alarm lamp in the notch at the top of the eyepiece, the wheel sunk into the bottom left, the
   /// weapon drum top right (turned by dragging it), and the torpedo button
   /// bottom right with its lamps upright beside it.
   corners,
@@ -292,13 +292,11 @@ class _GamePageState extends State<GamePage>
     final button = (height * 0.30).clamp(80.0, 130.0);
     final threats = _world.threats;
 
-    // The radar plate is square; the alarm tab stands beside it.
-    final radarHeight = radar;
-    // Info panel: all the height the radar above and the wheel below leave,
-    // and a little more width than the drum — scaled up to fill that box.
-    final infoTop = pad + radarHeight + pad;
-    final infoBottom = wheelShowing + pad;
+    // Left column, top down: the info panel, the radar, the wheel. The radar
+    // sits just above the wheel; the info panel gets everything over it.
+    final radarTop = height - wheelShowing - pad - radar;
     final infoWidth = (size.width * 0.27).clamp(170.0, 280.0);
+    final infoHeight = math.max(48.0, radarTop - pad * 2);
     // Drum: from the top down to above the torpedo button.
     final drumMaxHeight = math.max(48.0, height - pad - (pad + button + gap));
 
@@ -311,28 +309,11 @@ class _GamePageState extends State<GamePage>
         Positioned(
           left: pad,
           top: pad,
-          child: RadarScope(
-            size: radar,
-            heading: _world.periscope.heading,
-            fieldOfView: _world.config.fieldOfView,
-            traverseLimit: _world.config.traverseLimit,
-            threats: threats,
-            alarm: alarmLampLit(
-              sounding: _world.alarmSounding,
-              bombing: radarAlarm(threats, _world.config),
-              time: _time,
-            ),
-            time: _time,
-          ),
-        ),
-        Positioned(
-          left: pad,
-          top: infoTop,
-          bottom: infoBottom,
           width: infoWidth,
+          height: infoHeight,
           child: FittedBox(
             fit: BoxFit.contain,
-            alignment: Alignment.centerLeft,
+            alignment: Alignment.topLeft,
             child: InfoPanel(
               vessel: _world.vesselInSight,
               time: _time,
@@ -340,6 +321,38 @@ class _GamePageState extends State<GamePage>
               hits: _world.hits,
               score: _world.score,
               gearDamage: _world.periscope.damage,
+            ),
+          ),
+        ),
+        Positioned(
+          left: pad,
+          top: radarTop,
+          child: RadarScope(
+            size: radar,
+            heading: _world.periscope.heading,
+            fieldOfView: _world.config.fieldOfView,
+            traverseLimit: _world.config.traverseLimit,
+            threats: threats,
+            time: _time,
+          ),
+        ),
+        // The alarm lamp sits in the notch between the barrels at the top of
+        // the eyepiece. It is only a lamp: touches go through to the optic.
+        Positioned(
+          top: pad * 0.75,
+          left: 0,
+          right: 0,
+          child: IgnorePointer(
+            child: Center(
+              child: AlarmLamp(
+                key: const ValueKey('alarm-lamp'),
+                on: alarmLampLit(
+                  sounding: _world.alarmSounding,
+                  bombing: radarAlarm(threats, _world.config),
+                  time: _time,
+                ),
+                width: 104 * k,
+              ),
             ),
           ),
         ),

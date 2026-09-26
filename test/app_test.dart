@@ -297,7 +297,7 @@ void main() {
       final mid = size.center(Offset.zero);
       final radar = tester.getRect(find.byType(RadarScope));
       final radarSide = tester.widget<RadarScope>(find.byType(RadarScope)).size;
-      final alarmTab = tester.getRect(find.byKey(const ValueKey('alarm-tab')));
+      final alarm = tester.getRect(find.byKey(const ValueKey('alarm-lamp')));
       final info = tester.getRect(find.byType(InfoPanel));
       final drum = tester.getRect(find.byType(WeaponDrum));
       final button = tester.getRect(find.byType(FireButton));
@@ -307,13 +307,18 @@ void main() {
 
       expect(optic.dx, closeTo(mid.dx, 1), reason: 'optic in the middle');
 
-      expect(radar.left, lessThan(20), reason: 'radar top left');
-      expect(radar.top, lessThan(20));
-      // The alarm tab stands up at the top, to the right of the scope.
-      expect(alarmTab.left, greaterThanOrEqualTo(radar.left + radarSide),
-          reason: 'alarm tab to the right of the radar');
-      expect(alarmTab.top, closeTo(radar.top, 1), reason: 'at the top');
-      expect(alarmTab.height, lessThan(radarSide), reason: 'a small tab');
+      // Left column, top down: info panel, radar, wheel.
+      expect(info.left, lessThan(20), reason: 'info panel top left');
+      expect(info.top, lessThan(20));
+      expect(radar.left, lessThan(20), reason: 'radar on the left');
+      expect(radar.top, greaterThanOrEqualTo(info.bottom), reason: 'under info');
+      expect(radar.bottom, lessThanOrEqualTo(wheel.top), reason: 'above wheel');
+
+      // The alarm: an oval lamp in the notch at the top of the eyepiece.
+      expect(alarm.center.dx, closeTo(mid.dx, 1), reason: 'over the middle');
+      expect(alarm.top, lessThan(20), reason: 'at the top');
+      expect(alarm.width, greaterThan(alarm.height * 2), reason: 'oval');
+      expect(find.byKey(const ValueKey('alarm-tab')), findsNothing);
 
       // Drum shown at 80% of its drawn width; the radar made as wide.
       expect(drum.width, closeTo(176 * 0.8, 1), reason: 'drum 20% smaller');
@@ -324,11 +329,8 @@ void main() {
       // Wheel 30% smaller than the 72%-of-height it used to be.
       expect(wheel.width, closeTo(size.height * 0.72 * 0.7, 1));
 
-      // Info panel: below the radar, and filling the room down to the
-      // wheel — as big as that room allows.
-      expect(info.top, greaterThanOrEqualTo(radar.bottom), reason: 'below radar');
-      expect(info.bottom, lessThanOrEqualTo(wheel.top), reason: 'above wheel');
-      final room = wheel.top - radar.bottom;
+      // Info panel: as big as the room over the radar allows.
+      final room = radar.top - info.top;
       expect(
         info.height > room - 20 || info.width > size.width * 0.27 - 1,
         isTrue,

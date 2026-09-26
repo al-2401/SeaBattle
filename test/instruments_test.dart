@@ -255,4 +255,17 @@ void main() {
       }
     });
   });
+
+  testWidgets('the alarm lamp carries its name on the glass', (tester) async {
+    for (final on in const [false, true]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: Center(child: AlarmLamp(on: on))),
+        ),
+      );
+      expect(find.text(Ru.alarm), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    }
+  });
 }
+
