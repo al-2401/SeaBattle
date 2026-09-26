@@ -32,6 +32,19 @@ class Palette {
 
   static const Color fire = Color(0xFFFFC46B);
   static const Color smoke = Color(0xFF1A2124);
+
+  // Free-standing instruments around the eyepiece: olive enamel on dark
+  // steel, brass fittings, cream lettering, green phosphor on the radar.
+  static const Color enamel = Color(0xFF3F4A38);
+  static const Color enamelDark = Color(0xFF262D23);
+  static const Color plateSteel = Color(0xFF2B302F);
+  static const Color brass = Color(0xFFB8914A);
+  static const Color brassDark = Color(0xFF6B5327);
+  static const Color cream = Color(0xFFE9DDBF);
+  static const Color readoutWindow = Color(0xFF0B0D0C);
+  static const Color phosphor = Color(0xFF5CFF8A);
+  static const Color phosphorDim = Color(0xFF0E3A1E);
+  static const Color readyGreen = Color(0xFF52E36A);
 }
 
 /// Stencilled cabinet lettering.

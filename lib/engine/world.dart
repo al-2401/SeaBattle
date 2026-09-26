@@ -154,6 +154,27 @@ class SeaBattleWorld {
     return found;
   }
 
+  /// The ship nearest the cross-hair, if one is inside the field of view.
+  ///
+  /// This is what the target panel reports on. It is only ever a ship the
+  /// player is actually looking at — the panel cannot find anything the
+  /// periscope has not — and what the panel may say about her is still
+  /// limited by [Vessel.recognition], which only grows while she is held.
+  Vessel? get vesselInSight {
+    Vessel? best;
+    var bestOffAxis = double.infinity;
+    for (final vessel in vessels) {
+      if (vessel.isHit) continue;
+      final offAxis = angleDelta(periscope.heading, vessel.bearing).abs();
+      if (offAxis > config.fieldOfView / 2) continue;
+      if (offAxis < bestOffAxis) {
+        bestOffAxis = offAxis;
+        best = vessel;
+      }
+    }
+    return best;
+  }
+
   /// Roll of the horizon from the swell, radians.
   double get swellRoll =>
       math.sin(elapsed * 2 * math.pi / config.swellPeriod) *

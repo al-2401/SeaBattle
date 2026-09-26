@@ -20,6 +20,15 @@ class Ru {
   static const torpedoes = 'ТОРПЕДЫ';
   static const fire = 'ТОРПЕДА';
   static const threat = 'УГРОЗА';
+  static const alarm = 'ТРЕВОГА';
+  static const target = 'ЦЕЛЬ';
+  static const lock = 'ЗАХВАТ';
+  static const bearingLabel = 'ПЕЛЕНГ';
+  static const hitsLabel = 'ПОПАДАНИЯ';
+  static const ready = 'ГОТОВ';
+  static const neutralFlag = 'НЕЙТРАЛ';
+  static const enemyFlag = 'ВРАГ';
+  static const noTarget = 'НЕТ ЦЕЛИ';
   static const stop = 'УПОР';
   static const bow = 'НОС';
 
@@ -46,6 +55,13 @@ class Ru {
   static String bearing(double degrees) {
     final side = degrees < -0.5 ? 'Л' : (degrees > 0.5 ? 'П' : '');
     return 'ПЕЛЕНГ $side${degrees.abs().round()}°';
+  }
+
+  /// Bearing on an instrument counter: «Л015», «П120», «000».
+  static String bearingCounter(double degrees) {
+    final rounded = degrees.round();
+    final side = rounded < 0 ? 'Л' : (rounded > 0 ? 'П' : ' ');
+    return '$side${rounded.abs().toString().padLeft(3, '0')}';
   }
 
   /// Marks on the bearing tape: «Л15», «НОС», «П30».

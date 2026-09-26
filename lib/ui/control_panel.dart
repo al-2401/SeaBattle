@@ -430,6 +430,7 @@ class TorpedoRack extends StatelessWidget {
       children: [
         Text(
           '${Ru.torpedoes}  $remaining',
+          key: const ValueKey('torpedoes-left'),
           style: kStencil.copyWith(fontSize: 11, color: Palette.lamp),
         ),
         const SizedBox(height: 6),

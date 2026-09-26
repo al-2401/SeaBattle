@@ -754,4 +754,42 @@ void main() {
       expect(world.phase, GamePhase.over);
     });
   });
+
+  group('vessel in sight', () {
+    test('nothing in the field of view means no target', () {
+      final world = quietSea();
+      world.vessels.add(target(type: VesselClass.destroyer, bearing: 0.6));
+      expect(world.vesselInSight, isNull);
+    });
+
+    test('it is the ship nearest the cross-hair', () {
+      final world = quietSea();
+      final off = Vessel(
+        id: 11,
+        type: VesselClass.freighter,
+        position: Vec2.fromBearing(0.2, 2000),
+        course: math.pi / 2,
+        speed: 0,
+      );
+      final near = Vessel(
+        id: 12,
+        type: VesselClass.tanker,
+        position: Vec2.fromBearing(-0.05, 3000),
+        course: math.pi / 2,
+        speed: 0,
+      );
+      world.vessels.addAll([off, near]);
+      expect(world.vesselInSight, same(near));
+
+      world.periscope.heading = 0.19;
+      expect(world.vesselInSight, same(off));
+    });
+
+    test('a sinking ship is no longer a target', () {
+      final world = quietSea();
+      final ship = target(type: VesselClass.cruiser)..sinking = 0.3;
+      world.vessels.add(ship);
+      expect(world.vesselInSight, isNull);
+    });
+  });
 }

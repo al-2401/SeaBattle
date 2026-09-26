@@ -48,11 +48,16 @@ const EyepieceShape kEyepieceShape = EyepieceShape.binocular;
 /// margin is the wider one — that is where the collar and the eyecup go, and
 /// on a cropped circle they sit along a straight edge where there is nowhere
 /// to hide them.
-Rect eyepieceBox(Size size) {
+///
+/// [sideMargin] keeps the field clear of instruments standing at the sides
+/// without shrinking the widget itself: the housing shade is painted across
+/// the whole box, so a narrower widget would leave a visible seam where it
+/// stopped.
+Rect eyepieceBox(Size size, {double sideMargin = 0}) {
   const margin = 12.0;
   const collar = 30.0;
   final available = Size(
-    math.max(48.0, (size.width - margin * 2) * 0.85),
+    math.max(48.0, (size.width - margin * 2 - sideMargin * 2) * 0.85),
     math.max(40.0, size.height - collar * 2),
   );
   // Never wider than three of its own heights, never taller than it is wide.
@@ -132,9 +137,13 @@ Path eyepieceOutline(Rect rect, EyepieceShape shape) {
 /// Whether [position] (local to a box of [size]) falls on the glass.
 bool onEyepiece(
   Size size,
-  Offset position, [
+  Offset position, {
   EyepieceShape shape = kEyepieceShape,
-]) => eyepieceOutline(eyepieceBox(size), shape).contains(position);
+  double sideMargin = 0,
+}) => eyepieceOutline(
+  eyepieceBox(size, sideMargin: sideMargin),
+  shape,
+).contains(position);
 
 /// The ellipse the vignette falls off along: for a cropped circle it stays
 /// round, for the stretched shapes it follows the window.
@@ -157,12 +166,16 @@ class PeriscopeView extends StatelessWidget {
     required this.surface,
     required this.time,
     this.shape = kEyepieceShape,
+    this.sideMargin = 0,
   });
 
   final SeaBattleWorld world;
   final SeaSurface surface;
   final double time;
   final EyepieceShape shape;
+
+  /// Extra room kept clear at each side of the field; see [eyepieceBox].
+  final double sideMargin;
 
   @override
   Widget build(BuildContext context) {
@@ -172,6 +185,7 @@ class PeriscopeView extends StatelessWidget {
         surface: surface,
         time: time,
         shape: shape,
+        sideMargin: sideMargin,
       ),
       size: Size.infinite,
       isComplex: true,
@@ -186,19 +200,21 @@ class _PeriscopePainter extends CustomPainter {
     required this.surface,
     required this.time,
     required this.shape,
+    required this.sideMargin,
   });
 
   final SeaBattleWorld world;
   final SeaSurface surface;
   final double time;
   final EyepieceShape shape;
+  final double sideMargin;
 
   /// Crests closer than this are drawn over the ships as foreground swell.
   static const double _foregroundSwell = 900;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final outer = eyepieceBox(size);
+    final outer = eyepieceBox(size, sideMargin: sideMargin);
     if (outer.width <= 40 || outer.height <= 32) return;
 
     // Work in the window's own coordinates: everything the optics show is

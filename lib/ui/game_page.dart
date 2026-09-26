@@ -7,20 +7,52 @@ import 'package:flutter/services.dart';
 import '../audio/game_audio.dart';
 import '../engine/world.dart';
 import 'control_panel.dart';
+import 'instruments.dart';
 import 'painters/cabinet_painter.dart';
 import 'painters/sea_painter.dart';
 import 'palette.dart';
 import 'strings.dart';
 import 'periscope_view.dart';
 
+/// How the instruments are arranged around the eyepiece when the phone is
+/// held on its side.
+enum CockpitLayout {
+  /// The first landscape layout: two translucent wings, instruments stacked
+  /// in them, the optic between.
+  columns,
+
+  /// Free-standing instruments in the corners around a full-width optic
+  /// (docs/cockpit.md): radar top left, info panel mid left, the wheel sunk
+  /// into the bottom left, weapons mid right, the torpedo button bottom
+  /// right. The top-right corner is left empty on purpose.
+  corners,
+}
+
+/// The layout in use. Like [kEyepieceShape], a choice made in one place so
+/// both can be tried side by side on a real phone.
+const CockpitLayout kCockpitLayout = CockpitLayout.corners;
+
+/// How much of the training wheel shows above the bottom edge in the corner
+/// layout. Somewhere between a half and a third: enough spokes to read the
+/// rotation, not so much that it eats the height the optic needs.
+const double kWheelShowing = 0.42;
+
 class GamePage extends StatefulWidget {
-  const GamePage({super.key, this.audio, this.decor = CabinetDecor.instruments});
+  const GamePage({
+    super.key,
+    this.audio,
+    this.decor = CabinetDecor.instruments,
+    this.layout = kCockpitLayout,
+  });
 
   /// Sound engine; null means build the real one.
   final GameAudio? audio;
 
   /// How much of the boat is drawn behind the instruments.
   final CabinetDecor decor;
+
+  /// Arrangement of the instruments on a phone held on its side.
+  final CockpitLayout layout;
 
   @override
   State<GamePage> createState() => _GamePageState();
@@ -155,17 +187,22 @@ class _GamePageState extends State<GamePage>
         painter: _CabinetBackdrop(decor: widget.decor, time: _time),
         child: SafeArea(
           child: LayoutBuilder(
-            builder: (context, constraints) =>
-                constraints.maxWidth > constraints.maxHeight
-                ? _landscapeCabinet(constraints.biggest)
-                : _portraitCabinet(constraints.biggest),
+            builder: (context, constraints) {
+              if (constraints.maxWidth <= constraints.maxHeight) {
+                return _portraitCabinet(constraints.biggest);
+              }
+              return switch (widget.layout) {
+                CockpitLayout.columns => _landscapeCabinet(constraints.biggest),
+                CockpitLayout.corners => _cornerCabinet(constraints.biggest),
+              };
+            },
           ),
         ),
       ),
     );
   }
 
-  Widget _scope() {
+  Widget _scope({bool withOverlay = true, double sideMargin = 0}) {
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -175,9 +212,136 @@ class _GamePageState extends State<GamePage>
           time: _time,
           onControl: _setDragControl,
           onFire: _fire,
+          sideMargin: sideMargin,
+        ),
+        if (withOverlay && _world.phase != GamePhase.running)
+          _PhaseOverlay(world: _world, onStart: _startPatrol),
+      ],
+    );
+  }
+
+  /// Free-standing instruments in the corners around a full-width optic.
+  ///
+  /// The optic's widget covers the whole screen and only its field is kept
+  /// narrower, so the housing shade has no edge to show; the instruments
+  /// stand on top and may overlap the outer rim a little.
+  Widget _cornerCabinet(Size size) {
+    const pad = 8.0;
+    final height = size.height;
+    final column = (size.width * 0.2).clamp(150.0, 210.0);
+    final radar = (height * 0.30).clamp(96.0, 150.0);
+    final wheel = (height * 0.72).clamp(150.0, 320.0);
+    final wheelShowing = wheel * kWheelShowing;
+    final button = (height * 0.30).clamp(80.0, 130.0);
+    final threats = _world.threats;
+
+    // Mid-height slots on either side, centred on the screen's middle and as
+    // tall as the corners above and below leave free. The instrument is
+    // scaled down to fit rather than allowed to spill onto its neighbours.
+    Widget midSlot(double reserveTop, double reserveBottom, Widget child) {
+      final half = math.max(
+        24.0,
+        math.min(height / 2 - reserveTop, height - reserveBottom - height / 2),
+      );
+      return SizedBox(
+        width: column,
+        height: half * 2,
+        child: FittedBox(fit: BoxFit.scaleDown, child: child),
+      );
+    }
+
+    return Stack(
+      clipBehavior: Clip.hardEdge,
+      children: [
+        Positioned.fill(
+          child: _scope(withOverlay: false, sideMargin: column * 0.5),
+        ),
+        Positioned(
+          left: pad,
+          top: pad,
+          child: RadarScope(
+            size: radar,
+            heading: _world.periscope.heading,
+            fieldOfView: _world.config.fieldOfView,
+            traverseLimit: _world.config.traverseLimit,
+            threats: threats,
+            alarm: radarAlarm(threats, _world.config),
+            time: _time,
+            soundLamp: _SoundLamp(on: _audio.enabled, onTap: _toggleSound),
+          ),
+        ),
+        Positioned(
+          left: pad,
+          top: 0,
+          bottom: 0,
+          child: Center(
+            child: midSlot(
+              pad + radar + pad,
+              wheelShowing + pad,
+              InfoPanel(
+                vessel: _world.vesselInSight,
+                time: _time,
+                headingDegrees: _world.periscope.heading * 180 / math.pi,
+                hits: _world.hits,
+                score: _world.score,
+                gearDamage: _world.periscope.damage,
+              ),
+            ),
+          ),
+        ),
+        // The wheel is sunk into the bottom edge: most of it is below the
+        // screen, and the part that shows is under the left thumb.
+        Positioned(
+          left: column * 0.62 - wheel / 2,
+          bottom: wheelShowing - wheel,
+          width: wheel,
+          height: wheel,
+          child: HelmWheel(
+            heading: _world.periscope.heading,
+            control: _world.periscope.control,
+            onControl: _setDragControl,
+            diameter: wheel,
+          ),
+        ),
+        Positioned(
+          right: pad,
+          top: 0,
+          bottom: 0,
+          child: Center(
+            child: midSlot(
+              pad,
+              button + pad * 2,
+              WeaponDrum(remaining: _world.torpedoesRemaining),
+            ),
+          ),
+        ),
+        Positioned(
+          right: pad,
+          bottom: pad,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              LaunchLamps(
+                reloadFraction: _reloadProgress,
+                ready: _world.canFire,
+              ),
+              const SizedBox(width: 8),
+              FireButton(
+                enabled: _world.canFire,
+                // The countdown lamps beside it carry the reload now; a ring
+                // on the button as well would say it twice.
+                reloadProgress: 0,
+                onFire: _fire,
+                diameter: button,
+              ),
+            ],
+          ),
         ),
         if (_world.phase != GamePhase.running)
-          _PhaseOverlay(world: _world, onStart: _startPatrol),
+          Positioned.fill(
+            child: _PhaseOverlay(world: _world, onStart: _startPatrol),
+          ),
       ],
     );
   }
@@ -394,6 +558,7 @@ class _PeriscopeSurface extends StatefulWidget {
     required this.time,
     required this.onControl,
     required this.onFire,
+    this.sideMargin = 0,
   });
 
   final SeaBattleWorld world;
@@ -401,6 +566,7 @@ class _PeriscopeSurface extends StatefulWidget {
   final double time;
   final ValueChanged<double> onControl;
   final VoidCallback onFire;
+  final double sideMargin;
 
   @override
   State<_PeriscopeSurface> createState() => _PeriscopeSurfaceState();
@@ -422,13 +588,18 @@ class _PeriscopeSurfaceState extends State<_PeriscopeSurface> {
       // A tap on the glass fires; the dark cabinet around the optic does
       // not, or a thumb reaching for the controls would launch by mistake.
       onTapUp: (d) {
+        if (widget.world.phase != GamePhase.running) return;
         final size = context.size;
-        if (size != null && onEyepiece(size, d.localPosition)) widget.onFire();
+        if (size != null &&
+            onEyepiece(size, d.localPosition, sideMargin: widget.sideMargin)) {
+          widget.onFire();
+        }
       },
       child: PeriscopeView(
         world: widget.world,
         surface: widget.surface,
         time: widget.time,
+        sideMargin: widget.sideMargin,
       ),
     );
   }
@@ -618,61 +789,75 @@ class _PhaseOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final over = world.phase == GamePhase.over;
-    return Container(
-      color: Colors.black.withValues(alpha: 0.72),
-      alignment: Alignment.center,
-      // The briefing is long enough to outgrow a phone lying on its side, so
-      // the whole card scales down rather than spilling over the edge.
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                over ? Ru.patrolOver : Ru.title,
-                style: kStencil.copyWith(
-                  fontSize: 30,
-                  color: Palette.lamp,
-                  shadows: [const Shadow(color: Palette.lamp, blurRadius: 24)],
-                ),
-              ),
-              const SizedBox(height: 14),
-              if (over) ...[
-                _statLine(Ru.points, '${world.score}'),
-                _statLine(
-                  Ru.hitsOfShots,
-                  '${world.hits} / ${world.shotsFired}',
-                ),
-                _statLine(Ru.accuracy, '${(world.accuracy * 100).round()}%'),
-                _statLine(Ru.hullHits, '${world.hullHits}'),
-                if (world.neutralsSunk > 0)
-                  _statLine(Ru.neutralsSunk, '${world.neutralsSunk}'),
-                _statLine(Ru.best, '${world.bestScore}'),
-              ] else
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Text(
-                    Ru.briefing,
-                    textAlign: TextAlign.center,
+    // The shade only dims: it lets touches through, so the cabinet around
+    // the optic — the sound switch above all — still works on the briefing.
+    // The glass itself will not fire until the patrol is running.
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        IgnorePointer(
+          child: ColoredBox(color: Colors.black.withValues(alpha: 0.72)),
+        ),
+        Center(
+          // The briefing is long enough to outgrow a phone lying on its
+          // side, so the whole card scales down rather than spilling over.
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    over ? Ru.patrolOver : Ru.title,
                     style: kStencil.copyWith(
-                      fontSize: 12,
-                      height: 1.6,
-                      letterSpacing: 0.6,
-                      color: Palette.reticle.withValues(alpha: 0.78),
+                      fontSize: 30,
+                      color: Palette.lamp,
+                      shadows: [
+                        const Shadow(color: Palette.lamp, blurRadius: 24),
+                      ],
                     ),
                   ),
-                ),
-              const SizedBox(height: 22),
-              _StartButton(
-                label: over ? Ru.again : Ru.dive,
-                onPressed: onStart,
+                  const SizedBox(height: 14),
+                  if (over) ...[
+                    _statLine(Ru.points, '${world.score}'),
+                    _statLine(
+                      Ru.hitsOfShots,
+                      '${world.hits} / ${world.shotsFired}',
+                    ),
+                    _statLine(
+                      Ru.accuracy,
+                      '${(world.accuracy * 100).round()}%',
+                    ),
+                    _statLine(Ru.hullHits, '${world.hullHits}'),
+                    if (world.neutralsSunk > 0)
+                      _statLine(Ru.neutralsSunk, '${world.neutralsSunk}'),
+                    _statLine(Ru.best, '${world.bestScore}'),
+                  ] else
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Text(
+                        Ru.briefing,
+                        textAlign: TextAlign.center,
+                        style: kStencil.copyWith(
+                          fontSize: 12,
+                          height: 1.6,
+                          letterSpacing: 0.6,
+                          color: Palette.reticle.withValues(alpha: 0.78),
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 22),
+                  _StartButton(
+                    label: over ? Ru.again : Ru.dive,
+                    onPressed: onStart,
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
-      ),
+      ],
     );
   }
 
