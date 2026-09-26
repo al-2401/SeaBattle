@@ -107,6 +107,13 @@ class SeaBattleWorld {
   /// Fades from 1 to 0 after a blow lands; the view shakes the optics by it.
   double shock = 0;
 
+  /// Seconds the alarm has left to sound; see [GameConfig.alarmDuration].
+  double alarmTimer = 0;
+
+  /// Threats already heard, by id, so one that stays in earshot does not set
+  /// the alarm off again on every tick.
+  final Set<int> _heardThreats = {};
+
   double _spawnTimer = 0;
   double _mineTimer = 0;
   double _hornTimer = 0;
@@ -116,6 +123,10 @@ class SeaBattleWorld {
   double get difficulty => (elapsed / 360).clamp(0.0, 1.0);
 
   bool get isReloading => reloadTimer > 0;
+
+  /// Whether the alarm is sounding: a new threat has been heard within the
+  /// last [GameConfig.alarmDuration] seconds.
+  bool get alarmSounding => alarmTimer > 0;
   bool get canFire =>
       phase == GamePhase.running && tubesLoaded > 0 && !isReloading;
 
@@ -206,6 +217,8 @@ class SeaBattleWorld {
     _spawnTimer = 0.8;
     _mineTimer = _randomBetween(config.mineSpawnInterval);
     _hornTimer = 6 + _random.nextDouble() * 12;
+    alarmTimer = 0;
+    _heardThreats.clear();
     _cues.clear();
     // Start with a little traffic already in the arc.
     for (var i = 0; i < math.min(3, config.maxVessels); i++) {
@@ -256,6 +269,7 @@ class SeaBattleWorld {
 
     _updateTraffic(dt);
     _updateTorpedoes(dt);
+    _listenForThreats(dt);
     _checkGameOver();
   }
 
@@ -443,6 +457,30 @@ class SeaBattleWorld {
     shock = 1;
     _notify(code, NoticeKind.mine, 2.0);
     _cues.add(cue);
+  }
+
+  /// Sets the alarm off when something new comes within earshot.
+  ///
+  /// Only a threat that was not heard before does it: an escort that has
+  /// been circling for a minute is old news, and the alarm has already
+  /// fallen silent on its own. A second escort, or a mine, starts it again.
+  void _listenForThreats(double dt) {
+    alarmTimer = math.max(0, alarmTimer - dt);
+    final now = <int>{
+      for (final vessel in vessels)
+        if (vessel.type.hunts &&
+            !vessel.isHit &&
+            vessel.range <= config.threatRange)
+          vessel.id,
+      for (final mine in mines)
+        if (!mine.destroyed && mine.range <= config.threatRange) mine.id,
+    };
+    if (now.any((id) => !_heardThreats.contains(id))) {
+      alarmTimer = config.alarmDuration;
+    }
+    _heardThreats
+      ..clear()
+      ..addAll(now);
   }
 
   /// Sounds a merchant's horn if one is close enough and roughly where the

@@ -34,10 +34,26 @@ abstract class GameAudio {
     required double trainEffort,
     required int torpedoesRunning,
     required bool patrolRunning,
+    bool alarm = false,
   });
 
   Future<void> dispose();
 }
+
+/// One frame of a loop's level gliding towards [target].
+///
+/// A glide rather than a jump, or every change would click. Close enough, it
+/// lands on the target exactly: a glide alone only ever approaches it, and a
+/// loop meant to fall silent would go on hissing at a fraction of a percent.
+double glideLevel(double current, double target) {
+  final next = current + (target - current) * 0.12;
+  return (next - target).abs() < 0.01 ? target : next;
+}
+
+/// Whether a new level is worth sending to the player: a real change, or
+/// arriving at the target — the last step down to silence is never skipped.
+bool levelWorthSending(double next, double sent, double target) =>
+    (next - sent).abs() > 0.02 || (next == target && sent != target);
 
 /// Does nothing, quietly.
 class SilentAudio implements GameAudio {
@@ -58,6 +74,7 @@ class SilentAudio implements GameAudio {
     required double trainEffort,
     required int torpedoesRunning,
     required bool patrolRunning,
+    bool alarm = false,
   }) {}
 
   @override
@@ -158,6 +175,7 @@ class ArcadeAudio implements GameAudio {
     required double trainEffort,
     required int torpedoesRunning,
     required bool patrolRunning,
+    bool alarm = false,
   }) {
     if (!_ready) return;
 
@@ -168,14 +186,14 @@ class ArcadeAudio implements GameAudio {
           ? math.min(0.55, 0.32 + 0.09 * torpedoesRunning)
           : 0.0,
       SoundLoop.sea: _enabled ? (patrolRunning ? 0.32 : 0.18) : 0.0,
+      SoundLoop.alarm: _enabled && alarm ? 0.38 : 0.0,
     };
 
     for (final loop in SoundLoop.values) {
-      final current = _level[loop]!;
-      // Glide instead of jumping, or every change would click.
-      final next = current + (targets[loop]! - current) * 0.12;
+      final target = targets[loop]!;
+      final next = glideLevel(_level[loop]!, target);
       _level[loop] = next;
-      if ((next - _sentLevel[loop]!).abs() > 0.02) {
+      if (levelWorthSending(next, _sentLevel[loop]!, target)) {
         _sentLevel[loop] = next;
         _guard(_loops[loop]?.setVolume(next));
       }

@@ -792,4 +792,84 @@ void main() {
       expect(world.vesselInSight, isNull);
     });
   });
+
+  group('alarm', () {
+    Vessel escort(int id, double range) => Vessel(
+      id: id,
+      type: VesselClass.destroyer,
+      position: Vec2.fromBearing(0.3, range),
+      course: math.pi / 2,
+      speed: 0,
+    );
+
+    test('a newly heard escort sets it off, and it stops on its own', () {
+      final world = quietSea();
+      expect(world.alarmSounding, isFalse);
+
+      world.vessels.add(escort(40, _config.threatRange - 100));
+      world.update(1 / 60);
+      expect(world.alarmSounding, isTrue);
+
+      advance(world, _config.alarmDuration + 0.2);
+      expect(world.alarmSounding, isFalse,
+          reason: 'silent again although the escort is still there');
+    });
+
+    test('the same threat staying in earshot does not start it again', () {
+      final world = quietSea();
+      world.vessels.add(escort(41, _config.threatRange - 100));
+      advance(world, _config.alarmDuration + 0.2);
+      advance(world, 20);
+      expect(world.alarmSounding, isFalse);
+    });
+
+    test('the next threat starts it again', () {
+      final world = quietSea();
+      world.vessels.add(escort(42, _config.threatRange - 100));
+      advance(world, _config.alarmDuration + 0.2);
+      expect(world.alarmSounding, isFalse);
+
+      world.mines.add(
+        Mine(
+          id: 43,
+          position: Vec2.fromBearing(-0.2, _config.threatRange - 300),
+          drift: Vec2.zero,
+          bobPhase: 0,
+        ),
+      );
+      world.update(1 / 60);
+      expect(world.alarmSounding, isTrue);
+    });
+
+    test('ships that cannot hurt the boat do not set it off', () {
+      final world = quietSea();
+      world.vessels.add(
+        Vessel(
+          id: 44,
+          type: VesselClass.freighter,
+          position: Vec2.fromBearing(0.1, 900),
+          course: math.pi / 2,
+          speed: 0,
+        ),
+      );
+      world.update(1 / 60);
+      expect(world.alarmSounding, isFalse);
+    });
+
+    test('anything beyond earshot is not heard', () {
+      final world = quietSea();
+      world.vessels.add(escort(45, _config.threatRange + 200));
+      world.update(1 / 60);
+      expect(world.alarmSounding, isFalse);
+    });
+
+    test('a new patrol starts with the alarm quiet', () {
+      final world = quietSea();
+      world.vessels.add(escort(46, _config.threatRange - 100));
+      world.update(1 / 60);
+      world.reset();
+      expect(world.alarmSounding, isFalse);
+    });
+  });
 }
+

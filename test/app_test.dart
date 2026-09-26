@@ -7,6 +7,7 @@ import 'package:sea_battle/main.dart';
 import 'package:sea_battle/ui/control_panel.dart';
 import 'package:sea_battle/ui/game_page.dart';
 import 'package:sea_battle/ui/instruments.dart';
+import 'package:sea_battle/ui/painters/cabinet_painter.dart';
 import 'package:sea_battle/ui/periscope_view.dart';
 
 /// Torpedoes left, read off whichever instrument carries the count in the
@@ -37,6 +38,7 @@ class FakeAudio implements GameAudio {
   int loopUpdates = 0;
   double lastTrainEffort = 0;
   int lastTorpedoesRunning = 0;
+  bool lastAlarm = false;
   bool prepared = false;
   bool disposed = false;
 
@@ -54,8 +56,10 @@ class FakeAudio implements GameAudio {
     required double trainEffort,
     required int torpedoesRunning,
     required bool patrolRunning,
+    bool alarm = false,
   }) {
     loopUpdates++;
+    lastAlarm = alarm;
     lastTrainEffort = trainEffort;
     lastTorpedoesRunning = torpedoesRunning;
   }
@@ -223,6 +227,11 @@ void main() {
   });
 
   testWidgets('the sound lamp switches the audio off and on', (tester) async {
+    // Only the upright layout still has a sound switch; on its side the
+    // phone relies on its own volume keys.
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
     final audio = FakeAudio();
     await tester.pumpWidget(SeaBattleApp(audio: audio));
     await tester.pump(const Duration(milliseconds: 16));
@@ -288,7 +297,7 @@ void main() {
       final mid = size.center(Offset.zero);
       final radar = tester.getRect(find.byType(RadarScope));
       final radarSide = tester.widget<RadarScope>(find.byType(RadarScope)).size;
-      final sound = tester.getCenter(find.byKey(const ValueKey('sound-switch')));
+      final alarmTab = tester.getRect(find.byKey(const ValueKey('alarm-tab')));
       final info = tester.getRect(find.byType(InfoPanel));
       final drum = tester.getRect(find.byType(WeaponDrum));
       final button = tester.getRect(find.byType(FireButton));
@@ -300,10 +309,11 @@ void main() {
 
       expect(radar.left, lessThan(20), reason: 'radar top left');
       expect(radar.top, lessThan(20));
-      // The alarm and the speaker are a strip along the radar's own bottom.
-      expect(radar.contains(sound), isTrue, reason: 'on the radar plate');
-      expect(sound.dy, greaterThan(radar.top + radar.height * 0.8),
-          reason: 'along its bottom edge');
+      // The alarm tab stands up at the top, to the right of the scope.
+      expect(alarmTab.left, greaterThanOrEqualTo(radar.left + radarSide),
+          reason: 'alarm tab to the right of the radar');
+      expect(alarmTab.top, closeTo(radar.top, 1), reason: 'at the top');
+      expect(alarmTab.height, lessThan(radarSide), reason: 'a small tab');
 
       // Drum shown at 80% of its drawn width; the radar made as wide.
       expect(drum.width, closeTo(176 * 0.8, 1), reason: 'drum 20% smaller');
@@ -439,13 +449,19 @@ void main() {
       expect(torpedoesLeft(tester), 11);
     });
 
-    testWidgets('the speaker glyph shows the sound state', (tester) async {
+    testWidgets('there is no sound switch; the keyboard still has one', (
+      tester,
+    ) async {
       await pumpAt(tester, const Size(915, 412));
-      expect(find.byIcon(Icons.volume_up), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('sound-switch')));
-      await tester.pump(const Duration(milliseconds: 16));
-      expect(find.byIcon(Icons.volume_off), findsOneWidget);
-      expect(find.text('ЗВУК'), findsNothing, reason: 'no word on the tab');
+      expect(find.byKey(const ValueKey('sound-switch')), findsNothing);
+      expect(find.byIcon(Icons.volume_up), findsNothing);
+      expect(find.text('ЗВУК'), findsNothing);
+    });
+
+    testWidgets('the background is plain black', (tester) async {
+      await pumpAt(tester, const Size(915, 412));
+      final page = tester.widget<GamePage>(find.byType(GamePage));
+      expect(page.decor, CabinetDecor.none);
     });
 
     testWidgets('a tap on the glass fires, the instruments do not', (

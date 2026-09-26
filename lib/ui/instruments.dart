@@ -279,8 +279,7 @@ bool radarAlarm(List<Threat> threats, GameConfig config) {
   );
 }
 
-/// The plan-position radar, top left, with the alarm lamp and the sound
-/// switch along the bottom of its plate.
+/// The plan-position radar, top left, with the alarm tab beside it.
 ///
 /// It says where, never who: every contact is the same green dot, and it
 /// only carries what the hydrophone already reports — escorts and mines
@@ -295,76 +294,75 @@ class RadarScope extends StatelessWidget {
     required this.threats,
     required this.alarm,
     required this.time,
-    this.soundLamp,
   });
 
+  /// Side of the square radar plate.
   final double size;
   final double heading;
   final double fieldOfView;
   final double traverseLimit;
   final List<Threat> threats;
+
+  /// Whether the alarm lamp is lit.
   final bool alarm;
   final double time;
 
-  /// The sound switch rides on the radar's bottom strip, beside the alarm
-  /// lamp: a speaker glyph rather than a word, so the strip stays short.
-  final Widget? soundLamp;
-
   @override
   Widget build(BuildContext context) {
-    // One plate: the scope on top, and along its bottom edge a strip with
-    // the alarm lamp and the speaker — so the radar can be as big as the
-    // corner allows without a tab beside it eating the width.
     final inset = size * 0.075;
-    final scope = size - inset * 2;
-    return SizedBox(
-      width: size,
-      child: InstrumentPlate(
-        padding: EdgeInsets.fromLTRB(inset, inset, inset, inset * 0.7),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: scope,
-              height: scope,
-              child: CustomPaint(
-                painter: _RadarPainter(
-                  heading: heading,
-                  fieldOfView: fieldOfView,
-                  traverseLimit: traverseLimit,
-                  threats: threats,
-                  sweep: radarSweepAt(time),
-                ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: size,
+          height: size,
+          child: InstrumentPlate(
+            padding: EdgeInsets.all(inset),
+            child: CustomPaint(
+              size: Size.infinite,
+              painter: _RadarPainter(
+                heading: heading,
+                fieldOfView: fieldOfView,
+                traverseLimit: traverseLimit,
+                threats: threats,
+                sweep: radarSweepAt(time),
               ),
             ),
-            SizedBox(height: inset * 0.5),
-            SizedBox(
-              height: 20,
-              child: Row(
-                children: [
-                  const SizedBox(width: 6),
-                  PanelLamp(on: alarm, color: Palette.alarm, size: 12),
-                  const SizedBox(width: 6),
-                  // On a small radar the word gives way before the lamp or
-                  // the speaker do.
-                  Expanded(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(Ru.alarm, style: _plateLabel(7)),
-                    ),
-                  ),
-                  ?soundLamp,
-                  const SizedBox(width: 2),
-                ],
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
+        const SizedBox(width: 3),
+        // The alarm tab: up at the top, on the side towards the optic.
+        InstrumentPlate(
+          key: const ValueKey('alarm-tab'),
+          padding: const EdgeInsets.fromLTRB(8, 11, 8, 11),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(Ru.alarm, style: _plateLabel(6.5)),
+              const SizedBox(height: 5),
+              PanelLamp(
+                key: const ValueKey('alarm-lamp'),
+                on: alarm,
+                color: Palette.alarm,
+                size: 14,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
+
+/// Whether the alarm lamp should be lit this frame: it flashes while the
+/// alarm is sounding, and burns steady while an escort is close enough to be
+/// dropping depth charges.
+bool alarmLampLit({
+  required bool sounding,
+  required bool bombing,
+  required double time,
+}) => bombing || (sounding && (time * 2.5).floor().isEven);
 
 class _RadarPainter extends CustomPainter {
   _RadarPainter({

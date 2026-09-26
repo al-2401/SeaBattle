@@ -22,8 +22,8 @@ enum CockpitLayout {
   columns,
 
   /// Free-standing instruments in the corners around a full-width optic
-  /// (docs/cockpit.md): radar top left with the alarm strip along its
-  /// bottom, info panel under it, the wheel sunk into the bottom left, the
+  /// (docs/cockpit.md): radar top left with the alarm tab beside it, info
+  /// panel under it, the wheel sunk into the bottom left, the
   /// weapon drum top right (turned by dragging it), and the torpedo button
   /// bottom right with its lamps upright beside it.
   corners,
@@ -42,7 +42,7 @@ class GamePage extends StatefulWidget {
   const GamePage({
     super.key,
     this.audio,
-    this.decor = CabinetDecor.instruments,
+    this.decor = CabinetDecor.none,
     this.layout = kCockpitLayout,
   });
 
@@ -171,6 +171,7 @@ class _GamePageState extends State<GamePage>
           _world.config.maxAngularSpeed,
       torpedoesRunning: _world.torpedoes.length,
       patrolRunning: _world.phase == GamePhase.running,
+      alarm: _world.alarmSounding,
     );
 
     setState(() {});
@@ -291,12 +292,8 @@ class _GamePageState extends State<GamePage>
     final button = (height * 0.30).clamp(80.0, 130.0);
     final threats = _world.threats;
 
-    // The radar plate: its padding (top, the gap over the strip, bottom —
-    // 1 + 0.5 + 0.7 of the inset), the scope and the 20-point alarm strip.
-    // Kept in step with RadarScope.build, or the info panel below either
-    // overlaps it or loses the difference.
-    final radarInset = radar * 0.075;
-    final radarHeight = radarInset * 2.2 + (radar - radarInset * 2) + 20;
+    // The radar plate is square; the alarm tab stands beside it.
+    final radarHeight = radar;
     // Info panel: all the height the radar above and the wheel below leave,
     // and a little more width than the drum — scaled up to fill that box.
     final infoTop = pad + radarHeight + pad;
@@ -320,13 +317,12 @@ class _GamePageState extends State<GamePage>
             fieldOfView: _world.config.fieldOfView,
             traverseLimit: _world.config.traverseLimit,
             threats: threats,
-            alarm: radarAlarm(threats, _world.config),
-            time: _time,
-            soundLamp: _SoundLamp(
-              on: _audio.enabled,
-              onTap: _toggleSound,
-              iconOnly: true,
+            alarm: alarmLampLit(
+              sounding: _world.alarmSounding,
+              bombing: radarAlarm(threats, _world.config),
+              time: _time,
             ),
+            time: _time,
           ),
         ),
         Positioned(
@@ -733,43 +729,13 @@ class _StatusBar extends StatelessWidget {
 
 /// The sound switch on the cabinet front, with its little indicator lamp.
 class _SoundLamp extends StatelessWidget {
-  const _SoundLamp({
-    required this.on,
-    required this.onTap,
-    this.iconOnly = false,
-  });
+  const _SoundLamp({required this.on, required this.onTap});
 
   final bool on;
   final VoidCallback onTap;
 
-  /// A speaker glyph instead of the word, for the small alarm tab.
-  final bool iconOnly;
-
   @override
   Widget build(BuildContext context) {
-    if (iconOnly) {
-      return GestureDetector(
-        key: const ValueKey('sound-switch'),
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Padding(
-          padding: const EdgeInsets.all(3),
-          child: Icon(
-            on ? Icons.volume_up : Icons.volume_off,
-            size: 16,
-            color: on ? Palette.lamp : Palette.steel.withValues(alpha: 0.6),
-            shadows: on
-                ? [
-                    Shadow(
-                      color: Palette.lamp.withValues(alpha: 0.6),
-                      blurRadius: 8,
-                    ),
-                  ]
-                : null,
-          ),
-        ),
-      );
-    }
     return GestureDetector(
       key: const ValueKey('sound-switch'),
       onTap: onTap,

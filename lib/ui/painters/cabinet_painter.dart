@@ -12,6 +12,10 @@ import '../palette.dart';
 /// all bolted to. It never moves and never reacts — it is the room, not the
 /// game.
 enum CabinetDecor {
+  /// Nothing at all: plain black, so the optic and the instruments are the
+  /// only things on the screen.
+  none,
+
   /// Bare metal, near enough to what was there before.
   plain,
 
@@ -36,6 +40,10 @@ const _brassLit = Color(0xFFE6C48B);
 
 /// Paints the compartment the cabinet is built into.
 void paintCabinet(Canvas canvas, Size size, CabinetDecor decor, double time) {
+  if (decor == CabinetDecor.none) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFF000000));
+    return;
+  }
   _plating(canvas, size);
   if (decor == CabinetDecor.plain) return;
 

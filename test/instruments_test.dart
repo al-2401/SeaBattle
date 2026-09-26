@@ -233,5 +233,26 @@ void main() {
       expect(tester.takeException(), isNull);
     }
   });
-}
 
+  group('alarm lamp', () {
+    test('dark when nothing is happening', () {
+      for (var t = 0.0; t < 3; t += 0.05) {
+        expect(alarmLampLit(sounding: false, bombing: false, time: t), isFalse);
+      }
+    });
+
+    test('flashes while the alarm sounds', () {
+      final states = {
+        for (var t = 0.0; t < 3; t += 0.05)
+          alarmLampLit(sounding: true, bombing: false, time: t),
+      };
+      expect(states, {true, false});
+    });
+
+    test('burns steady while an escort is bombing', () {
+      for (var t = 0.0; t < 3; t += 0.05) {
+        expect(alarmLampLit(sounding: false, bombing: true, time: t), isTrue);
+      }
+    });
+  });
+}

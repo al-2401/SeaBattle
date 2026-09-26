@@ -44,7 +44,10 @@ enum SoundLoop {
   torpedo,
 
   /// Sea and hull, always there.
-  sea;
+  sea,
+
+  /// The howler: sounds for a while when a new threat is heard.
+  alarm;
 
   String get asset => 'audio/$name.wav';
 }

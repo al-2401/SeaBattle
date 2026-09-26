@@ -32,6 +32,7 @@ class SoundBank {
     'motor' => _motor(),
     'torpedo' => _torpedo(),
     'sea' => _sea(),
+    'alarm' => _alarm(),
     _ => throw ArgumentError('unknown sound: $name'),
   };
 
@@ -374,5 +375,28 @@ class SoundBank {
       ..normalize(0.58)
       ..makeSeamless(crossfade: crossfade);
     return mixed.trimmed(loop);
+  }
+
+  /// The howler: a hoarse buzz beating three times a loop, the sound a
+  /// control room makes when something has been heard out there.
+  ///
+  /// Everything in it — the tone, its harmonics and the beat — completes a
+  /// whole number of cycles in the loop, so it repeats without a seam.
+  Wave _alarm() {
+    const loop = 1.2;
+    const crossfade = 0.1;
+    final rate = rateFor('alarm');
+    final tone = fitToLoop(410, loop);
+
+    final howl = _blank(loop + crossfade, rate)
+      ..addOscillator(from: tone, amplitude: 0.55, waveform: Waveform.saw)
+      ..addOscillator(from: tone * 2, amplitude: 0.22, waveform: Waveform.square)
+      ..addOscillator(from: tone * 0.5, amplitude: 0.25)
+      ..lowPass(2300)
+      ..tremolo(rate: fitToLoop(2.5, loop), depth: 0.55)
+      ..tremolo(rate: fitToLoop(31, loop), depth: 0.12)
+      ..normalize(0.7)
+      ..makeSeamless(crossfade: crossfade);
+    return howl.trimmed(loop);
   }
 }

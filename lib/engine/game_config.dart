@@ -32,6 +32,7 @@ class GameConfig {
     this.depthChargeRange = 1200.0,
     this.depthChargeInterval = const (min: 9.0, max: 16.0),
     this.threatRange = 2400.0,
+    this.alarmDuration = 5.0,
     this.neutralShare = 0.3,
     this.flagRange = 2200.0,
     this.identifyTime = 1.3,
@@ -116,6 +117,11 @@ class GameConfig {
   /// the hydrophone has it and the threat strip marks its bearing; beyond it
   /// there is nothing to hear yet, wherever the optics happen to point.
   final double threatRange;
+
+  /// Seconds the alarm howls after a new threat is heard. Then it falls
+  /// silent on its own, even if the threat is still there, and waits for the
+  /// next one — a crew would not stand a klaxon that never stops.
+  final double alarmDuration;
 
   /// Share of the merchant traffic sailing under a neutral flag. Warships are
   /// never neutral — nobody was fooled by an escort.
